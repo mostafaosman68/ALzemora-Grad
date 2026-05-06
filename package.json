@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "pg": "^8.20.0",
+    "react-native-audio-record": "^0.2.2"
+  }
+}

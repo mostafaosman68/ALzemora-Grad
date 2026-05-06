@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+*/node_modules/
+**/node_modules/
+
+# Virtual environments
+venv/
+venv2/
+*/venv/
+*/venv2/
+
+# Android build files
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+backend/android/.gradle/
+
+# Expo
+frontend/.expo/
+frontend/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pkl
+*.h5
+
+# Large model files
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.onnx
+*.dll
+*.lib
+*.pyd
+*.apk
+
+# Environment
+.env
+*/.env
+
+# OS
+.DS_Store
+Thumbs.db
