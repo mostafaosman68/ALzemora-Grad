@@ -78,6 +78,43 @@ adb shell pm grant com.alzemora android.permission.RECORD_AUDIO
 adb shell pm grant com.alzemora android.permission.POST_NOTIFICATIONS
 ```
 
+## Stop The App Safely
+
+### 1. Stop the app on the emulator
+
+This closes the running app without uninstalling it:
+
+```powershell
+adb shell am force-stop com.alzemora
+```
+
+### 2. Stop Metro
+
+If Metro is running in a visible terminal, press `Ctrl+C`.
+
+If Metro was started in the background or the terminal is gone, find the process on port `8081` and stop only that PID:
+
+```powershell
+netstat -ano | Select-String ':8081'
+Stop-Process -Id <PID> -Force
+```
+
+### 3. Shut down the emulator
+
+Gracefully ask the attached emulator to close:
+
+```powershell
+adb -s emulator-5554 emu kill
+```
+
+Confirm nothing is still attached:
+
+```powershell
+adb devices
+```
+
+If you used a different emulator ID, get it from `adb devices` and replace `emulator-5554`.
+
 ## Android SDK Notes
 
 This project currently needs Android SDK Build-Tools `34.0.0`.
