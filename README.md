@@ -4,7 +4,7 @@ Run the backend and frontend from two separate terminals.
 
 ## Prerequisites
 
-- Python 3.10+
+- Python 3.11 or 3.12 recommended
 - Node.js 18+
 - MongoDB connection string
 - Android Studio / Android emulator, or a connected Android device
@@ -14,15 +14,17 @@ Run the backend and frontend from two separate terminals.
 1. Create and activate a Python virtual environment from the project root:
 
 ```powershell
-python -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
 2. Install Python dependencies:
 
 ```powershell
-pip install -r requirements.txt
+.\scripts\install_backend.ps1
 ```
+
+If `py -3.12` is not found, install Python 3.12 from python.org, then recreate the virtual environment. Avoid Python 3.14 for this project because some pinned ML/scientific packages may not have compatible Windows wheels yet.
 
 3. Create `Backend\.env`:
 
@@ -108,4 +110,20 @@ npm run android:device
 
 ```powershell
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+```
+
+- If installing requirements fails while building `numpy`, check your Python version:
+
+```powershell
+python --version
+```
+
+If it shows Python 3.14, delete the current environment and recreate it with Python 3.12:
+
+```powershell
+deactivate
+Remove-Item -Recurse -Force .venv
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+.\scripts\install_backend.ps1
 ```
