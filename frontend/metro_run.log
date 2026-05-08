@@ -1,0 +1,45 @@
+
+> Alzemora@1.0.0 start
+> react-native start --reset-cache
+
+info Welcome to React Native v0.73
+info Starting dev server on port 8081...
+
+                        ▒▒▓▓▓▓▒▒
+                     ▒▓▓▓▒▒░░▒▒▓▓▓▒
+                  ▒▓▓▓▓░░░▒▒▒▒░░░▓▓▓▓▒
+                 ▓▓▒▒▒▓▓▓▓▓▓▓▓▓▓▓▓▒▒▒▓▓
+                 ▓▓░░░░░▒▓▓▓▓▓▓▒░░░░░▓▓
+                 ▓▓░░▓▓▒░░░▒▒░░░▒▓▒░░▓▓
+                 ▓▓░░▓▓▓▓▓▒▒▒▒▓▓▓▓▒░░▓▓
+                 ▓▓░░▓▓▓▓▓▓▓▓▓▓▓▓▓▒░░▓▓
+                 ▓▓▒░░▒▒▓▓▓▓▓▓▓▓▒░░░▒▓▓
+                  ▒▓▓▓▒░░░▒▓▓▒░░░▒▓▓▓▒
+                     ▒▓▓▓▒░░░░▒▓▓▓▒
+                        ▒▒▓▓▓▓▒▒
+
+
+warning: the transform cache was reset.
+                Welcome to Metro v0.80.12
+              Fast - Scalable - Integrated
+
+
+info React Native v0.85.3 is now available (your project is running on v0.73.4).
+info Changelog: https://github.com/facebook/react-native/releases/tag/v0.85.3
+info Diff: https://react-native-community.github.io/upgrade-helper/?from=0.85.3
+info For more info, check out "https://reactnative.dev/docs/upgrading?os=windows".
+info Dev server ready
+
+i - run on iOS
+a - run on Android
+d - open Dev Menu
+r - reload app
+
+ BUNDLE  ./index.js 
+
+ LOG  Running "Alzemora" with {"rootTag":11}
+ LOG  [AUTH] User removed from storage
+ BUNDLE  ./index.js 
+
+ LOG  Running "Alzemora" with {"rootTag":11}
+ LOG  [AUTH] User removed from storage
