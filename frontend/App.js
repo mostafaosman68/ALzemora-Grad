@@ -16,6 +16,34 @@ import AddMedScreen      from './src/screens/08_AddMedScreen';
 import UserProfileScreen from './src/screens/09_UserProfileScreen';
 import AddPatientScreen  from './src/screens/10_AddPatientScreen';
 import HBScreen          from './src/screens/11_HBScreen';
+import {
+  initializeMessaging,
+  registerFCMToken,
+  setupBackgroundNotificationHandler,
+} from './src/services/fcmService';
+
+const BACKEND_URL = require('./src/config').BASE_URL;
+
+async function setActivePolarPatient(patientId) {
+  try {
+    await fetch(`${BACKEND_URL}/heartbeat/bridge/active-patient`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        patient_id: patientId || null,
+        backend_url: BACKEND_URL,
+        device_name: 'Polar H10',
+        threshold: 90,
+        source: 'polar_h10',
+      }),
+    });
+  } catch (error) {
+    console.log('[POLAR] Failed to set active patient:', error);
+  }
+}
 
 const Stack = createNativeStackNavigator();
 
@@ -43,7 +71,14 @@ export function AuthProvider({ children }) {
       }
     };
 
+    // Initialize FCM
+    const initFCM = async () => {
+      await initializeMessaging();
+      setupBackgroundNotificationHandler();
+    };
+
     requestNotificationPermission();
+    initFCM();
   }, []);
 
   // Load user data from AsyncStorage on app start
@@ -71,9 +106,20 @@ export function AuthProvider({ children }) {
         if (user) {
           await AsyncStorage.setItem('user', JSON.stringify(user));
           console.log('[AUTH] User saved to storage:', user.full_name);
+          
+          // Register the token for the patient document when this is a helper account.
+          // Alerts are sent to the patient record, so storing the token there is required.
+          const tokenTargetId = user.patient_id || user.user_id || user._id;
+          if (tokenTargetId) {
+            await registerFCMToken(tokenTargetId);
+          }
+
+          // Keep the Polar bridge aligned with the current patient selection.
+          await setActivePolarPatient(user.patient_id || user.user_id || user._id);
         } else {
           await AsyncStorage.removeItem('user');
           console.log('[AUTH] User removed from storage');
+          await setActivePolarPatient(null);
         }
       } catch (error) {
         console.log('[AUTH] Error saving user to storage:', error);

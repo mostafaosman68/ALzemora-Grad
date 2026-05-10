@@ -87,7 +87,7 @@ export default function AddPatientScreen({navigation}) {
         formData.append('editor_role', user.role);
       }
 
-      const response = await fetch(`${BASE_URL}/create-user`, {
+      const response = await fetch(`${BASE_URL}/users/create-user`, {
         method: 'POST',
         body: formData,
       });
@@ -146,7 +146,7 @@ export default function AddPatientScreen({navigation}) {
       formData.append('patient_email', patientEmail.trim().toLowerCase());
       formData.append('patient_password', patientPassword);
 
-      const response = await fetch(`${BASE_URL}/link-existing-patient`, {
+      const response = await fetch(`${BASE_URL}/users/link-existing-patient`, {
         method: 'POST',
         body: formData,
       });

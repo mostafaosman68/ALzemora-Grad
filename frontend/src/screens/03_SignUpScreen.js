@@ -93,7 +93,7 @@ export default function SignUpScreen({navigation, route}) {
         formData.append('patient_name', patientName.trim());
       }
 
-      const response = await fetch(`${API_URL}/create-user`, {
+      const response = await fetch(`${API_URL}/users/create-user`, {
         method: 'POST',
         body: formData,
       });

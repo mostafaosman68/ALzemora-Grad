@@ -58,6 +58,8 @@ export default function HBScreen({navigation}) {
   const targetUserId = isHelper ? user?.patient_id : user?.user_id;
   const targetLabel = isHelper ? user?.patient_name : user?.full_name;
 
+  const displayReading = reading?.latest_reading || reading;
+
   const loadReading = useCallback(async () => {
     if (!targetUserId) {
       setLoading(false);
@@ -102,10 +104,14 @@ export default function HBScreen({navigation}) {
     }, [loadReading]),
   );
 
-  const live = Boolean(reading?.sensor_connected);
-  const bpmText = reading?.heart_rate != null ? String(reading.heart_rate) : '--';
-  const statusText = live ? 'Sensor Connected' : reading?.status === 'no_data' ? 'Waiting for Sensor' : 'Sensor Offline';
-  const statusHint = reading?.alert_triggered
+  const live = Boolean(displayReading?.sensor_connected) || displayReading?.status === 'live';
+  const bpmText = displayReading?.heart_rate != null ? String(displayReading.heart_rate) : '--';
+  const statusText = live
+    ? 'Sensor Connected'
+    : displayReading?.status === 'no_data'
+      ? 'Waiting for Sensor'
+      : 'Sensor Offline';
+  const statusHint = displayReading?.alert_triggered
     ? 'Heart rate is above the configured threshold.'
     : live
       ? 'Live data is arriving from the sensor.'
@@ -188,6 +194,15 @@ export default function HBScreen({navigation}) {
 
         <SectionTitle hint="Auto refreshes every 3 seconds">Live Reading</SectionTitle>
 
+        {!targetUserId ? (
+          <View style={styles.emptyStateCard}>
+            <Text style={styles.emptyStateTitle}>No patient linked</Text>
+            <Text style={styles.emptyStateText}>
+              Link a patient account first so live heartbeat readings can appear here.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.metricsGrid}>
           {metricCards.map((item) => (
             <View key={item.label} style={styles.metricCard}>
@@ -199,7 +214,7 @@ export default function HBScreen({navigation}) {
           ))}
         </View>
 
-        {reading?.alert_triggered ? (
+        {displayReading?.alert_triggered ? (
           <View style={styles.alertCard}>
             <Text style={styles.alertTitle}>Attention needed</Text>
             <Text style={styles.alertText}>
@@ -403,6 +418,24 @@ const styles = StyleSheet.create({
   },
   alertText: {
     color: 'rgba(255,255,255,0.86)',
+    fontSize: 12,
+    lineHeight: 18,
+  },
+  emptyStateCard: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  emptyStateTitle: {
+    color: COLORS.white,
+    fontSize: 14,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  emptyStateText: {
+    color: 'rgba(255,255,255,0.72)',
     fontSize: 12,
     lineHeight: 18,
   },

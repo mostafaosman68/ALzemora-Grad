@@ -67,7 +67,7 @@ export default function LoginScreen({navigation}) {
         formData.append('patient_name', patientName.trim());
       }
 
-      const response = await fetch(`${API_URL}/login`, {
+      const response = await fetch(`${API_URL}/users/login`, {
         method: 'POST',
         headers: {
           'Accept': 'application/json',

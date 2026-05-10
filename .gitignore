@@ -44,3 +44,5 @@ __pycache__/
 # OS
 .DS_Store
 Thumbs.db
+Backend/alzemora-9ff7c-firebase-adminsdk-fbsvc-2e52cde272.json
+frontend/android/app/google-services.json

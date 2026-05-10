@@ -1,0 +1,9 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+motor==3.3.2
+pymongo==4.6.0
+python-dotenv==1.0.0
+bleak==0.21.1
+easyocr==1.7.0
+firebase-admin==6.2.0
+requests==2.31.0

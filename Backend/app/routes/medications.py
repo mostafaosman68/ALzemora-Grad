@@ -6,6 +6,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
+import asyncio
 
 import logging
 
@@ -130,16 +131,25 @@ async def add_medication(
         "updated_at": datetime.utcnow(),
     }
 
-    # Attempt OCR on the primary image (if EasyOCR is available)
-    try:
-        ocr_text = _extract_ocr_text(saved_files[0])
-        if ocr_text:
-            medication_doc["ocr_text"] = ocr_text
-    except Exception as exc:
-        logger.info("Failed OCR for medication image %s: %s", saved_files[0], exc)
-
+    # Insert medication first so we can return quickly to the client
     result = await db.medications.insert_one(medication_doc)
     medication_doc["_id"] = result.inserted_id
+
+    # Run OCR in the background and update the record when done.
+    # This avoids blocking the request (and client timeouts) while OCR runs.
+    async def _do_ocr_and_update(image_path: str, doc_id):
+        try:
+            ocr_text = await asyncio.get_event_loop().run_in_executor(None, _extract_ocr_text, image_path)
+            if ocr_text:
+                await db.medications.update_one({"_id": doc_id}, {"$set": {"ocr_text": ocr_text}})
+        except Exception as exc:
+            logger.info("Failed OCR for medication image %s: %s", image_path, exc)
+
+    try:
+        asyncio.create_task(_do_ocr_and_update(saved_files[0], result.inserted_id))
+    except Exception:
+        # If scheduling the background task fails for any reason, just log and continue
+        logger.info("Could not schedule OCR background task for %s", saved_files[0])
 
     return {
         "message": "Medication saved successfully",

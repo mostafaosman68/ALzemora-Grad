@@ -12,6 +12,8 @@
   "dependencies": {
     "@react-native-async-storage/async-storage": "^1.23.1",
     "@react-native-community/datetimepicker": "^9.1.0",
+    "@react-native-firebase/app": "^18.8.0",
+    "@react-native-firebase/messaging": "^18.8.0",
     "@react-navigation/native": "^6.1.10",
     "@react-navigation/native-stack": "^6.9.17",
     "react": "18.2.0",

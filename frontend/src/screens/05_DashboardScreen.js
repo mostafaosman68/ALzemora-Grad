@@ -13,6 +13,7 @@ import {useFocusEffect} from '@react-navigation/native';
 import {ScreenBg, TopBar, COLORS} from '../components/UI';
 import {useAuth} from '../../App';
 import { BASE_URL } from '../config';
+import {fetchPatientMedications} from '../services/medicationService';
 
 const {width} = Dimensions.get('window');
 
@@ -32,23 +33,38 @@ const getAccountLabel = (role) => {
   return 'Patient Account';
 };
 
-const DEMO_MEDICATIONS = {
-  default: [
-    {name: 'Donepezil 5mg', schedule: '8:00 AM'},
-    {name: 'Memantine 10mg', schedule: '2:00 PM'},
-    {name: 'Vitamin D', schedule: '9:00 PM'},
-  ],
-  alternate: [
-    {name: 'Aspirin 81mg', schedule: '7:30 AM'},
-    {name: 'Metformin 500mg', schedule: '1:00 PM'},
-    {name: 'Atorvastatin 20mg', schedule: '9:30 PM'},
-  ],
+const formatMedicationSchedule = (schedule) => {
+  if (!schedule) return 'No schedule set';
+
+  if (typeof schedule === 'string') {
+    return schedule;
+  }
+
+  const parts = [];
+  if (Array.isArray(schedule.days) && schedule.days.length > 0) {
+    parts.push(schedule.days.join(', '));
+  }
+  if (schedule.time) {
+    parts.push(schedule.time);
+  } else if (schedule.hour && schedule.minute && schedule.period) {
+    parts.push(`${schedule.hour}:${schedule.minute} ${schedule.period}`);
+  }
+
+  return parts.length > 0 ? parts.join(' • ') : 'No schedule set';
 };
+
+const normalizeMedication = (med, index) => ({
+  id: med?._id || `${med?.name || 'med'}-${index}`,
+  name: med?.name || med?.medication_name || 'Medication',
+  schedule: formatMedicationSchedule(med?.schedule),
+});
 
 export default function DashboardScreen({navigation}) {
   const {user, setUser} = useAuth();
   const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [medications, setMedications] = useState([]);
+  const [medsLoading, setMedsLoading] = useState(false);
   const [stats, setStats] = useState({
     friends_count: 0,
     meds_count: 0,
@@ -108,20 +124,31 @@ export default function DashboardScreen({navigation}) {
       ? user?.patient_id
       : user?.user_id;
 
-  const demoMeds = (() => {
-    const key = String(targetUserId || '');
-    if (!key) return DEMO_MEDICATIONS.default;
-    return key.charCodeAt(key.length - 1) % 2 === 0
-      ? DEMO_MEDICATIONS.default
-      : DEMO_MEDICATIONS.alternate;
-  })();
+  const loadMedications = async () => {
+    if (!targetUserId) {
+      setMedications([]);
+      return;
+    }
+
+    setMedsLoading(true);
+    try {
+      const data = await fetchPatientMedications(targetUserId);
+      const items = Array.isArray(data?.items) ? data.items : [];
+      setMedications(items.map(normalizeMedication));
+    } catch (err) {
+      console.log('[MEDS] Error fetching patient medications:', err);
+      setMedications([]);
+    } finally {
+      setMedsLoading(false);
+    }
+  };
 
   const refreshHelperPatients = async () => {
     if (!isHelper || !user?.user_id || !user?.role) return;
 
     try {
       const response = await fetch(
-        `${BASE_URL}/helper-patients?user_id=${encodeURIComponent(user.user_id)}&role=${encodeURIComponent(user.role)}`,
+        `${BASE_URL}/users/helper-patients?user_id=${encodeURIComponent(user.user_id)}&role=${encodeURIComponent(user.role)}`,
         {
           method: 'GET',
           headers: {
@@ -186,6 +213,7 @@ export default function DashboardScreen({navigation}) {
   useEffect(() => {
     if (targetUserId) {
       fetchUserStats();
+      loadMedications();
     }
   }, [targetUserId]);
 
@@ -356,15 +384,21 @@ export default function DashboardScreen({navigation}) {
         </View>
       )}
 
-      {/* Demo medications list */}
+      {/* Patient medications list */}
       <View style={styles.medsSection}>
         <View style={styles.medsHeaderRow}>
           <Text style={styles.medsTitle}>Today&apos;s Medications</Text>
-          <Text style={styles.medsSubtitle}>Demo Data</Text>
+          <Text style={styles.medsSubtitle}>{medsLoading ? 'Loading...' : 'From patient record'}</Text>
         </View>
 
-        {demoMeds.map((med, index) => (
-          <View key={`${med.name}-${index}`} style={styles.medRow}>
+        {!medsLoading && medications.length === 0 ? (
+          <View style={styles.medEmptyState}>
+            <Text style={styles.medEmptyText}>No medications found for this patient.</Text>
+          </View>
+        ) : null}
+
+        {medications.map((med, index) => (
+          <View key={med.id} style={styles.medRow}>
             <View style={styles.medInfo}>
               <Text style={styles.medName}>{med.name}</Text>
               <Text style={styles.medSchedule}>Take at {med.schedule}</Text>
@@ -591,6 +625,13 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '700',
     color: COLORS.white,
+  },
+  medEmptyState: {
+    paddingVertical: 10,
+  },
+  medEmptyText: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.65)',
   },
   statsRow: {
     position: 'absolute',

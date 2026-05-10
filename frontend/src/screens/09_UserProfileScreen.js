@@ -58,7 +58,7 @@ export default function UserProfileScreen({navigation}) {
   const fetchPatientData = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${BASE_URL}/get-user-by-name?name=${encodeURIComponent(user.patient_name)}`);
+      const response = await fetch(`${BASE_URL}/users/get-user-by-name?name=${encodeURIComponent(user.patient_name)}`);
       const data = await response.json();
       if (data && !data.error) {
         setPatientData(data);
@@ -105,7 +105,7 @@ export default function UserProfileScreen({navigation}) {
 
     setLoading(true);
     try {
-      const response = await fetch(`${BASE_URL}/update-user`, {
+      const response = await fetch(`${BASE_URL}/users/update-user`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

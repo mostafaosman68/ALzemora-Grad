@@ -3,7 +3,8 @@ from typing import Optional
 from bson import ObjectId
 from app.database import get_db
 
-router = APIRouter()
+router = APIRouter(prefix="/users", tags=["users"])
+legacy_router = APIRouter(tags=["users-legacy"])
 
 MAX_GUARDIANS_PER_PATIENT = 2
 MAX_CAREGIVERS_PER_PATIENT = 1
@@ -47,6 +48,7 @@ async def get_patient_helper_counts(db, patient_id_value: str):
 
 # ─── Signup ───────────────────────────────────────────────
 @router.post("/create-user")
+@legacy_router.post("/create-user")
 async def create_user(
     email: str = Form(...),
     password: str = Form(...),
@@ -193,6 +195,7 @@ async def create_user(
 
 # ─── Login ─────────────────────────────────────────────────
 @router.post("/login")
+@legacy_router.post("/login")
 async def login(
     email: str = Form(...),
     password: str = Form(...),
@@ -277,6 +280,7 @@ async def login(
 
 # ─── Get linked patients for helper account ──────────────
 @router.get("/helper-patients")
+@legacy_router.get("/helper-patients")
 async def get_helper_patients(user_id: str, role: str):
     try:
         db = get_db()
@@ -327,6 +331,7 @@ async def get_helper_patients(user_id: str, role: str):
 
 # ─── Get user by name ─────────────────────────────────────
 @router.get("/get-user-by-name")
+@legacy_router.get("/get-user-by-name")
 async def get_user_by_name(name: str):
     try:
         db = get_db()
@@ -360,6 +365,7 @@ async def get_user_by_name(name: str):
 
 # ─── Update user profile ───────────────────────────────────
 @router.post("/update-user")
+@legacy_router.post("/update-user")
 async def update_user(
     data: dict = Body(...),
 ):
@@ -486,6 +492,7 @@ async def get_user_stats(user_id: str):
 
 # ─── Link existing patient to guardian/caregiver ───────────
 @router.post("/link-existing-patient")
+@legacy_router.post("/link-existing-patient")
 async def link_existing_patient(
     editor_user_id: str = Form(...),
     editor_role: str = Form(...),
@@ -568,3 +575,35 @@ async def link_existing_patient(
     except Exception as e:
         print(f"[LINK PATIENT ERROR] {str(e)}")
         return {"error": f"Error linking patient: {str(e)}"}
+
+
+# ─── Store FCM device token ────────────────────────────────
+@router.post("/fcm-token")
+@legacy_router.post("/fcm-token")
+async def store_fcm_token(data: dict = Body(...)):
+    try:
+        db = get_db()
+        if db is None:
+            return {"error": "Database connection failed"}
+
+        patient_id = data.get("patient_id")
+        fcm_token = data.get("fcm_token")
+
+        if not patient_id or not fcm_token:
+            return {"error": "patient_id and fcm_token are required"}
+
+        # Update or create FCM token record
+        result = await db.users.update_one(
+            {"_id": ObjectId(patient_id)},
+            {"$set": {"fcm_token": fcm_token, "fcm_token_updated_at": __import__("datetime").datetime.utcnow()}},
+        )
+
+        if result.matched_count == 0:
+            return {"error": "User not found"}
+
+        print(f"[FCM] Token stored for patient {patient_id}")
+        return {"message": "FCM token stored successfully"}
+
+    except Exception as e:
+        print(f"[FCM ERROR] {str(e)}")
+        return {"error": f"Error storing FCM token: {str(e)}"}
