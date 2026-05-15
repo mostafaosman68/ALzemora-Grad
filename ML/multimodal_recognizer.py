@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import threading
 import pyaudio
 import os
+import re
 from collections import deque
 from PIL import Image
 from insightface.app import FaceAnalysis
@@ -537,6 +538,11 @@ def get_face_results(frame, app, face_db):
 # ==========================================
 # 🎬 MAIN
 # ==========================================
+def has_cv2_gui_support() -> bool:
+    info = cv2.getBuildInformation()
+    return not re.search(r'GUI\s*:\s*(NONE|none)', info)
+
+
 def main():
     threading.Thread(target=audio_worker, daemon=True).start()
 
@@ -552,8 +558,17 @@ def main():
         print("[Video] ❌ Cannot open webcam.")
         return
 
+    if not has_cv2_gui_support():
+        print("[Video] ❌ OpenCV has no GUI support in this install.")
+        print("Install the regular Windows OpenCV package: pip install opencv-python")
+        print("Do not use opencv-python-headless if you want cv2.imshow() windows.")
+        cap.release()
+        return
+
     print("\n✅ MULTIMODAL FUSION READY — press Q to quit")
     print(f"   Weights → Face={W_FACE}  Voice={W_VOICE}  Threshold={FUSION_THRESHOLD}\n")
+
+    cv2.namedWindow("Multimodal Fusion", cv2.WINDOW_NORMAL)
 
     while True:
         ret, frame = cap.read()

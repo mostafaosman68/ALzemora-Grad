@@ -8,7 +8,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from ML.mediscan_ported.medicines import Medicine
+from medicines import Medicine
 
 GREEN      = (50, 205, 50)
 RED        = (60, 60, 220)
@@ -273,7 +273,7 @@ def draw_debug_scores(
     candidate: str | None,
     ocr_result: object | None,
 ) -> None:
-    from ML.mediscan_ported.ocr_reader import OcrResult
+    from ocr_reader import OcrResult
     if not orb_scores:
         return
 

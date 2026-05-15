@@ -17,7 +17,7 @@ from difflib import SequenceMatcher
 import cv2
 import numpy as np
 
-from ML.mediscan_ported.medicines import MEDICINES, Medicine
+from medicines import MEDICINES, Medicine
 
 logger = logging.getLogger(__name__)
 

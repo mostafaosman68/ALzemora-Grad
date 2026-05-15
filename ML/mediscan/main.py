@@ -15,10 +15,10 @@ from dataclasses import dataclass, field
 
 import cv2
 
-from ML.mediscan_ported.detector import MedicineDetector, OrbResult
-from ML.mediscan_ported.medicines import get_medicine
-from ML.mediscan_ported.ocr_reader import OcrReader, OcrResult
-from ML.mediscan_ported.overlay import (
+from detector import MedicineDetector, OrbResult
+from medicines import get_medicine
+from ocr_reader import OcrReader, OcrResult
+from overlay import (
     draw_bounding_box,
     draw_debug_scores,
     draw_medicine_panels,
@@ -26,7 +26,7 @@ from ML.mediscan_ported.overlay import (
     draw_scanning_indicator,
     draw_status_bar,
 )
-from ML.mediscan_ported.tts import SpeechEngine
+from tts import SpeechEngine
 
 logging.basicConfig(
     level=logging.INFO,
