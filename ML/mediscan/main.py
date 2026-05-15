@@ -79,8 +79,15 @@ def main() -> None:
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
-    cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
-    cv2.resizeWindow(WINDOW_TITLE, 1280, 720)
+    # Try to create GUI window; set flag if it fails (headless mode)
+    gui_available = False
+    try:
+        cv2.namedWindow(WINDOW_TITLE, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(WINDOW_TITLE, 1280, 720)
+        gui_available = True
+        logger.info("GUI mode enabled")
+    except Exception as e:
+        logger.warning("GUI not available (%s) - running in headless mode", str(e))
 
     # One MedState per medicine key
     states: dict[str, MedState] = {k: MedState() for k in detector.loaded_keys()}
@@ -192,37 +199,46 @@ def main() -> None:
         # ── Rendering ─────────────────────────────────────────────────────
         confirmed_keys = [k for k, s in states.items() if s.confirmed]
 
-        if detector.reference_count() == 0:
-            draw_no_references_warning(frame)
-        elif confirmed_keys:
-            # Draw bounding boxes using stable_bbox so the box doesn't flicker
-            # when ORB misses a frame mid-hold.
-            for idx, key in enumerate(confirmed_keys):
-                st = states[key]
-                if st.stable_bbox is not None:
-                    conf = st.orb_result.confidence if st.orb_result else 0.0
-                    draw_bounding_box(frame, st.stable_bbox, conf, key, idx)
+        if gui_available:
+            if detector.reference_count() == 0:
+                draw_no_references_warning(frame)
+            elif confirmed_keys:
+                # Draw bounding boxes using stable_bbox so the box doesn't flicker
+                # when ORB misses a frame mid-hold.
+                for idx, key in enumerate(confirmed_keys):
+                    st = states[key]
+                    if st.stable_bbox is not None:
+                        conf = st.orb_result.confidence if st.orb_result else 0.0
+                        draw_bounding_box(frame, st.stable_bbox, conf, key, idx)
 
-            # Draw stacked info panels for all confirmed medicines
-            medicines = [(key, get_medicine(key)) for key in confirmed_keys]
-            draw_medicine_panels(frame, medicines)
+                # Draw stacked info panels for all confirmed medicines
+                medicines = [(key, get_medicine(key)) for key in confirmed_keys]
+                draw_medicine_panels(frame, medicines)
+            else:
+                draw_scanning_indicator(frame, tick)
+
+            if debug_mode:
+                draw_debug_scores(frame, debug_scores_cache, 0, None, ocr_result)
+
+            confirmed_str = ", ".join(confirmed_keys) if confirmed_keys else "—"
+            ocr_status = (
+                " | OCR: loading..." if not ocr.is_ready()
+                else (f" | OCR: {ocr_result.medicine_key} ({ocr_result.confidence:.2f})" if ocr_result else "")
+            )
+            status = f"Detected: {confirmed_str}{ocr_status}   Speech: {'ON' if speech_enabled else 'OFF'}"
+            draw_status_bar(frame, fps_display, status, detector.reference_count())
         else:
-            draw_scanning_indicator(frame, tick)
+            # In headless mode, just log the status
+            if confirmed_keys:
+                logger.info("Detected medicines: %s", ", ".join(confirmed_keys))
 
-        if debug_mode:
-            draw_debug_scores(frame, debug_scores_cache, 0, None, ocr_result)
+        if gui_available:
+            cv2.imshow(WINDOW_TITLE, frame)
+            key_press = cv2.waitKey(1) & 0xFF
+        else:
+            time.sleep(0.001)  # sleep 1ms in headless mode
+            key_press = 0
 
-        confirmed_str = ", ".join(confirmed_keys) if confirmed_keys else "—"
-        ocr_status = (
-            " | OCR: loading..." if not ocr.is_ready()
-            else (f" | OCR: {ocr_result.medicine_key} ({ocr_result.confidence:.2f})" if ocr_result else "")
-        )
-        status = f"Detected: {confirmed_str}{ocr_status}   Speech: {'ON' if speech_enabled else 'OFF'}"
-        draw_status_bar(frame, fps_display, status, detector.reference_count())
-
-        cv2.imshow(WINDOW_TITLE, frame)
-
-        key_press = cv2.waitKey(1) & 0xFF
         if key_press in (ord("q"), 27):
             break
         elif key_press == ord("r"):
@@ -236,7 +252,8 @@ def main() -> None:
             debug_mode = not debug_mode
 
     cap.release()
-    cv2.destroyAllWindows()
+    if gui_available:
+        cv2.destroyAllWindows()
     speech.stop()
     logger.info("Stopped")
 

@@ -19,7 +19,14 @@ ACCENT     = (0, 165, 255)
 CYAN       = (200, 220, 0)
 YELLOW     = (0, 220, 220)
 
-FONT = cv2.FONT_HERSHEY_SIMPLEX
+# Handle headless OpenCV (no GUI functions available)
+try:
+    FONT = cv2.FONT_HERSHEY_SIMPLEX
+    LINE_AA = cv2.LINE_AA
+except AttributeError:
+    # In headless mode, we can't use cv2.putText anyway, so use dummy values
+    FONT = 0
+    LINE_AA = 0
 
 # Colours cycled per-medicine so boxes/panels are visually distinct
 _PALETTE = [GREEN, CYAN, YELLOW, (200, 100, 255), (100, 200, 255)]
