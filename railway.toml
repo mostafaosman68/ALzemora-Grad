@@ -1,0 +1,8 @@
+[build]
+builder = "docker"
+dockerfilePath = "Backend/Dockerfile"
+watchPatterns = ["Backend/**", "ML/**"]
+
+[deploy]
+startCommand = "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+restartPolicyType = "on_failure"
