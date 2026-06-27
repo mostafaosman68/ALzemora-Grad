@@ -1,0 +1,294 @@
+Geofence Backend Code Explanation
+=================================
+
+This project is a simple Node.js backend that checks whether a device is inside
+or outside a saved geofence area.
+
+The backend does not read GPS directly from the device. Instead, another device
+or app must send latitude and longitude values to the backend. The backend then
+calculates the distance from the saved center point and returns whether the
+device is inside or outside the allowed radius.
+
+
+Main Setup
+----------
+
+The code imports Express:
+
+  import express from "express";
+
+Express is used to create HTTP API endpoints.
+
+The app uses this port:
+
+  const PORT = process.env.PORT || 3000;
+
+That means:
+
+- If an environment variable called PORT exists, the server uses it.
+- Otherwise, it uses port 3000.
+
+The default geofence radius is:
+
+  const DEFAULT_RADIUS_METERS = 100;
+
+So if the client does not send a custom radius, the allowed area is 100 meters.
+
+Device data is stored here:
+
+  const devices = new Map();
+
+This stores data in memory only. If the server restarts, all saved devices and
+geofences are lost. For a real production app, this should be replaced with a
+database.
+
+This line allows the backend to read JSON request bodies:
+
+  app.use(express.json());
+
+
+GET /
+-----
+
+Endpoint:
+
+  GET /
+
+This is a simple route that confirms the backend is running.
+
+It returns a JSON response showing the available endpoints:
+
+- POST /devices/:deviceId/geofence
+- POST /devices/:deviceId/location
+- GET /devices/:deviceId/status
+
+This route was added so that visiting http://localhost:3000/ does not show:
+
+  Cannot GET /
+
+
+POST /devices/:deviceId/geofence
+--------------------------------
+
+Endpoint:
+
+  POST /devices/:deviceId/geofence
+
+This sets the safe area for a device.
+
+Example request:
+
+  {
+    "latitude": 30.0444,
+    "longitude": 31.2357
+  }
+
+The device ID comes from the URL. For example:
+
+  POST /devices/demo/geofence
+
+In that example, the device ID is:
+
+  demo
+
+The route reads:
+
+- latitude
+- longitude
+- radiusMeters
+
+If radiusMeters is not provided, it uses the default 100 meters.
+
+Before saving the geofence, it validates the latitude and longitude by calling:
+
+  validateCoordinates(latitude, longitude)
+
+If the coordinates are invalid, the backend returns a 400 error.
+
+If the radius is invalid, such as zero or a negative number, the backend also
+returns a 400 error.
+
+If everything is valid, the geofence is saved in memory for that device.
+
+The saved geofence includes:
+
+- latitude
+- longitude
+- radiusMeters
+- createdAt
+
+
+POST /devices/:deviceId/location
+--------------------------------
+
+Endpoint:
+
+  POST /devices/:deviceId/location
+
+This receives the current location of a device and checks whether it is inside
+or outside the saved geofence.
+
+Example request:
+
+  {
+    "latitude": 30.0460,
+    "longitude": 31.2357
+  }
+
+The route validates the coordinates first.
+
+Then it checks whether the device already has a geofence. If no geofence exists,
+it returns a 404 error:
+
+  No geofence is set for this device.
+
+If a geofence exists, it calculates the distance from the saved geofence center
+to the new device location:
+
+  const distanceMeters = getDistanceMeters(device.geofence, { latitude, longitude });
+
+Then it checks whether the device is outside:
+
+  const outside = distanceMeters > device.geofence.radiusMeters;
+
+If the distance is greater than the radius, the device is outside.
+
+If the distance is less than or equal to the radius, the device is inside.
+
+The backend saves:
+
+- the latest location
+- the latest status, either inside or outside
+- the latest distance in meters
+
+The response includes:
+
+- deviceId
+- status
+- alert
+- distanceMeters
+- radiusMeters
+- location
+
+Example outside response:
+
+  {
+    "deviceId": "demo",
+    "status": "outside",
+    "alert": true,
+    "distanceMeters": 178,
+    "radiusMeters": 100
+  }
+
+The alert value is true when the device is outside the geofence.
+
+
+GET /devices/:deviceId/status
+-----------------------------
+
+Endpoint:
+
+  GET /devices/:deviceId/status
+
+This returns the last known status for a device.
+
+If the device does not exist, it returns a 404 error:
+
+  Device not found.
+
+If the device exists, it returns:
+
+- saved geofence
+- last location
+- current status
+- last calculated distance
+
+If no location has been sent yet, the status is:
+
+  unknown
+
+
+validateCoordinates Function
+----------------------------
+
+This helper checks whether latitude and longitude are valid.
+
+Latitude must be a number between -90 and 90.
+
+Longitude must be a number between -180 and 180.
+
+If anything is invalid, the function returns an error message.
+
+If everything is valid, it returns null.
+
+
+getDistanceMeters Function
+--------------------------
+
+This helper calculates the distance between two GPS points in meters.
+
+It uses the Haversine formula, which is commonly used to calculate distance
+between two latitude/longitude coordinates on Earth.
+
+The function receives two objects:
+
+  from
+  to
+
+Each object must contain:
+
+  latitude
+  longitude
+
+The result is the distance in meters.
+
+
+toRadians Function
+------------------
+
+Latitude and longitude values are usually written in degrees.
+
+Math functions like sine and cosine use radians, so this helper converts degrees
+to radians.
+
+
+Important Notes
+---------------
+
+1. This backend only decides whether a location is inside or outside the radius.
+
+2. The backend does not track the device automatically. A phone, Raspberry Pi,
+   GPS module, or web app must send location updates to the backend.
+
+3. The alert is only a JSON value:
+
+     "alert": true
+
+   To send a real notification, SMS, email, or alarm, extra code must be added.
+
+4. Data is stored in memory, so it disappears when the server restarts.
+
+5. Authentication is not implemented yet. In production, you should add security
+   so only trusted devices can send location updates.
+
+
+Basic Flow
+----------
+
+1. Start the server:
+
+   npm start
+
+2. Set the safe area:
+
+   POST /devices/demo/geofence
+
+3. Send location updates:
+
+   POST /devices/demo/location
+
+4. If the device is more than 100 meters away from the saved center, the backend
+   returns:
+
+   "alert": true
+
