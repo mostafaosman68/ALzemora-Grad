@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SYSROOT="${SCRIPT_DIR}/.gradle/aapt2-amd64-sysroot/root"
+LOCAL_PROPERTIES="${SCRIPT_DIR}/local.properties"
+
+if [[ ! -e "${SYSROOT}/lib64" && -d "${SYSROOT}/usr/lib/x86_64-linux-gnu" ]]; then
+  ln -s usr/lib/x86_64-linux-gnu "${SYSROOT}/lib64"
+fi
+
+if [[ ! -d "${SYSROOT}/lib64" ]]; then
+  cat >&2 <<EOF
+Missing amd64 sysroot for AAPT2.
+
+Expected: ${SYSROOT}
+Populate it with:
+  mkdir -p "${SCRIPT_DIR}/.gradle/aapt2-amd64-sysroot/debs"
+  cd "${SCRIPT_DIR}/.gradle/aapt2-amd64-sysroot/debs"
+  apt-get download libc6:amd64 libgcc-s1:amd64
+  find . -name '*.deb' -exec dpkg-deb -x {} ../root \;
+  ln -sfn usr/lib/x86_64-linux-gnu ../root/lib64
+EOF
+  exit 1
+fi
+
+if [[ ! -f "${LOCAL_PROPERTIES}" ]]; then
+  echo "Missing ${LOCAL_PROPERTIES}; cannot locate Android SDK." >&2
+  exit 1
+fi
+
+SDK_DIR="$(grep '^sdk.dir=' "${LOCAL_PROPERTIES}" | head -n 1 | cut -d= -f2-)"
+if [[ -z "${SDK_DIR}" ]]; then
+  echo "Missing sdk.dir in ${LOCAL_PROPERTIES}; cannot locate Android SDK." >&2
+  exit 1
+fi
+
+AAPT2_REAL="${SDK_DIR}/build-tools/34.0.0/aapt2"
+if [[ ! -x "${AAPT2_REAL}" ]]; then
+  echo "Missing executable AAPT2 at ${AAPT2_REAL}." >&2
+  exit 1
+fi
+
+exec qemu-x86_64 -L "${SYSROOT}" "${AAPT2_REAL}" "$@"

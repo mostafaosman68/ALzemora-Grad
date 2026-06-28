@@ -1,0 +1,54 @@
+# Python virtual environments
+venv/
+venv310/
+.venv/
+env/
+.env/
+
+# Large binary packages
+*.deb
+
+# Build/Gradle caches
+**/.gradle-user-home/
+**/.gradle/
+.gradle/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+
+# Logs
+*.log
+metro_log.txt
+metro_output.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+*.env
+
+# Large binary/data files (optional - remove if you want to push these)
+*.npy
+face_embeddings.json
+# Android build cache
+frontend/android/.gradle/
+frontend/android/local.properties
+frontend/android/build_log.txt
+
+# Database files
+*.db
+*.sqbpro
+
+# Claude settings
+.claude/

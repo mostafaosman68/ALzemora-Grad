@@ -1,0 +1,15 @@
+[Unit]
+Description=ALzemora Backend (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=alzemora
+WorkingDirectory=/home/alzemora/ALzemora-Grad-Ras-pi-5/Backend
+ExecStart=/home/alzemora/ALzemora-Grad-Ras-pi-5/Backend/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
