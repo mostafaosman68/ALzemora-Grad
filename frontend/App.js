@@ -16,9 +16,9 @@ import AddMedScreen      from './src/screens/08_AddMedScreen';
 import UserProfileScreen from './src/screens/09_UserProfileScreen';
 import AddPatientScreen  from './src/screens/10_AddPatientScreen';
 import HBScreen          from './src/screens/11_HBScreen';
-import FaceRecognitionScreen from './src/screens/12_FaceRecognitionScreen';
 import MedsListScreen      from './src/screens/13_MedsListScreen';
 import PeopleListScreen    from './src/screens/14_PeopleListScreen';
+import AddVoiceScreen      from './src/screens/15_AddVoiceScreen';
 import {
   initializeMessaging,
   registerFCMToken,
@@ -27,26 +27,7 @@ import {
 
 const BACKEND_URL = require('./src/config').BASE_URL;
 
-async function setActivePolarPatient(patientId) {
-  try {
-    await fetch(`${BACKEND_URL}/heartbeat/bridge/active-patient`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
-      },
-      body: JSON.stringify({
-        patient_id: patientId || null,
-        backend_url: BACKEND_URL,
-        device_name: 'Polar H10',
-        threshold: 90,
-        source: 'polar_h10',
-      }),
-    });
-  } catch (error) {
-    console.log('[POLAR] Failed to set active patient:', error);
-  }
-}
+// BLE is now handled by the phone in HBScreen — no Pi bridge calls needed.
 
 async function setActivePatientForRecognition(patientId) {
   if (!patientId) return;
@@ -133,14 +114,12 @@ export function AuthProvider({ children }) {
             await registerFCMToken(tokenTargetId);
           }
 
-          // Keep the Polar bridge and multimodal recognizer aligned with the current patient.
+          // Keep the multimodal recognizer aligned with the current patient.
           const activePatientId = user.patient_id || user.user_id || user._id;
-          await setActivePolarPatient(activePatientId);
           await setActivePatientForRecognition(activePatientId);
         } else {
           await AsyncStorage.removeItem('user');
           console.log('[AUTH] User removed from storage');
-          await setActivePolarPatient(null);
         }
       } catch (error) {
         console.log('[AUTH] Error saving user to storage:', error);
@@ -200,9 +179,9 @@ export function AuthProvider({ children }) {
             <Stack.Screen name="AddMed"       component={AddMedScreen} />
             <Stack.Screen name="UserProfile"  component={UserProfileScreen} />
             <Stack.Screen name="AddPatient"       component={AddPatientScreen} />
-            <Stack.Screen name="FaceRecognition" component={FaceRecognitionScreen} />
             <Stack.Screen name="MedsList"        component={MedsListScreen} />
             <Stack.Screen name="PeopleList"      component={PeopleListScreen} />
+            <Stack.Screen name="AddVoice"        component={AddVoiceScreen} />
           </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>

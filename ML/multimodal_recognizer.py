@@ -1,22 +1,24 @@
+import json
 import os
+import queue as _queue_module
+import re
+import shutil
+import subprocess
 import sys
+import threading
+import time
+
 import cv2
 import numpy as np
-import json
+import pyaudio
+import requests
 import torch
 import torch.nn.functional as F
-import threading
-import pyaudio
-import re
-import time
-import shutil
-import queue as _queue_module
-import requests
+import torchaudio
 from collections import Counter, deque
 from insightface.app import FaceAnalysis
 from picamera2 import Picamera2
-import torchaudio
-import subprocess
+
 # Compatibility shim for torchaudio >= 2.1 (removed list_audio_backends)
 if not hasattr(torchaudio, 'list_audio_backends'):
     torchaudio.list_audio_backends = lambda: []
@@ -30,7 +32,6 @@ VOICE_MODEL_PATH  = os.path.join(BASE_DIR, "Voice_recognition", "pretrained_ecap
 API_BASE_URL      = os.getenv("API_BASE_URL", "http://127.0.0.1:8000")
 
 SPEAK_COOLDOWN = 120.0  # seconds before the same person is announced again
-TTS_RATE       = 120    # words per minute — lower = slower / clearer
 
 RATE             = 16000
 WINDOW_SECONDS   = 2.0
@@ -68,53 +69,76 @@ shared_voice_state = {"person": "Unknown", "score": 0.0, "status": "Silence"}
 relation_db: dict = {}
 last_spoken_times: dict = {}  # {name: float timestamp}
 
-try:
-    import pyttsx3
+# ── Piper TTS setup ───────────────────────────────────────────────────────
+_PIPER_DIR   = os.path.join(BASE_DIR, "piper")
+_PIPER_BIN   = os.path.join(_PIPER_DIR, "piper")
+_PIPER_MODEL = os.path.join(_PIPER_DIR, "voices", "en_US-lessac-medium.onnx")
 
-    tts_engine = pyttsx3.init()
-    tts_engine.setProperty("rate", TTS_RATE)
-    TTS_AVAILABLE = True
-except Exception:
-    tts_engine = None
-    TTS_AVAILABLE = False
 
+def _piper_sample_rate() -> int:
+    try:
+        with open(_PIPER_MODEL + ".json") as f:
+            return int(json.load(f).get("audio", {}).get("sample_rate", 22050))
+    except Exception:
+        return 22050
+
+
+def _piper_env() -> dict:
+    env = os.environ.copy()
+    existing = env.get("LD_LIBRARY_PATH", "")
+    env["LD_LIBRARY_PATH"] = f"{_PIPER_DIR}:{existing}" if existing else _PIPER_DIR
+    env["ESPEAK_DATA_PATH"] = os.path.join(_PIPER_DIR, "espeak-ng-data")
+    return env
+
+
+_PIPER_AVAILABLE   = os.path.isfile(_PIPER_BIN) and os.path.isfile(_PIPER_MODEL)
+_PIPER_SAMPLE_RATE = _piper_sample_rate() if _PIPER_AVAILABLE else 22050
 
 # Serialized TTS queue — drains one message at a time so multiple simultaneous
 # detections are announced one after the other on the speaker.
 _tts_queue = _queue_module.Queue()
 
 
-def _speak_blocking(text: str):
-    global tts_engine, TTS_AVAILABLE
-    if TTS_AVAILABLE and tts_engine is not None:
-        try:
-            tts_engine.say(text)
-            tts_engine.runAndWait()
-            return
-        except Exception:
-            TTS_AVAILABLE = False
+def _speak_blocking(text: str) -> None:
+    if not _PIPER_AVAILABLE:
+        print(f"[TTS] Piper not found — skipping: {text}")
+        return
 
-    espeak_bin = shutil.which("espeak-ng") or shutil.which("espeak")
-    if espeak_bin is not None:
-        try:
-            wav_file = "/tmp/tts_output.wav"
-            subprocess.run(
-                [espeak_bin, "-s", str(TTS_RATE), "-w", wav_file, text],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            subprocess.run(
-                ["paplay", "--server=/run/user/1000/pulse/native", wav_file],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+    # Generate raw PCM from Piper into a buffer so we can retry aplay devices.
+    try:
+        piper = subprocess.Popen(
+            [_PIPER_BIN, "--model", _PIPER_MODEL, "--output_raw", "--quiet"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=_piper_env(),
+        )
+        raw_pcm, _ = piper.communicate(input=text.encode())
+        if piper.returncode != 0 or not raw_pcm:
+            print(f"[TTS] Piper returned no audio (rc={piper.returncode})")
             return
-        except Exception:
-            pass
+    except Exception as exc:
+        print(f"[TTS] Piper synthesis error: {exc}")
+        return
 
-    print(f"[TTS] {text}")
+    # Try aplay with PulseAudio first, then default ALSA device.
+    for device_flag in (["-D", "pulse"], []):
+        cmd = ["aplay"] + device_flag + [
+            "-r", str(_PIPER_SAMPLE_RATE), "-f", "S16_LE", "-t", "raw", "-q", "-"
+        ]
+        try:
+            result = subprocess.run(
+                cmd,
+                input=raw_pcm,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+            )
+            if result.returncode == 0:
+                return
+            err = result.stderr.decode(errors="replace").strip()
+            print(f"[TTS] aplay {device_flag} failed (rc={result.returncode}): {err}")
+        except Exception as exc:
+            print(f"[TTS] aplay {device_flag} error: {exc}")
 
 
 def _tts_worker():
@@ -424,6 +448,27 @@ def find_best_input_device():
 # ==========================================
 # 🔊 AUDIO WORKER
 # ==========================================
+def _find_capture_device() -> str:
+    """Return the first real hardware capture device (plughw:X,0) from arecord -l.
+    Falls back to 'default' if nothing is found."""
+    try:
+        out = subprocess.check_output(["arecord", "-l"], stderr=subprocess.DEVNULL, text=True)
+        for line in out.splitlines():
+            # Lines look like: "card 2: Pro [Astro MixAmp Pro], device 0: USB Audio ..."
+            if line.strip().startswith("card"):
+                import re as _re
+                m = _re.search(r"card\s+(\d+).*device\s+(\d+)", line)
+                if m:
+                    card, dev = m.group(1), m.group(2)
+                    device = f"plughw:{card},{dev}"
+                    print(f"[Audio] Auto-detected capture device: {device} ({line.strip()[:60]})")
+                    return device
+    except Exception as e:
+        print(f"[Audio] arecord -l failed: {e}")
+    print("[Audio] No capture device found via arecord -l — falling back to 'default'")
+    return "default"
+
+
 def audio_worker(voice_db: dict):
     global shared_voice_state
 
@@ -443,25 +488,33 @@ def audio_worker(voice_db: dict):
         shared_voice_state["status"] = "Model Error"
         return
 
-    # Use arecord instead of PyAudio to bypass PortAudio's ALSA dmix segfault
     arecord_bin = shutil.which("arecord")
     if not arecord_bin:
         print("[Audio] ❌ arecord not found — install alsa-utils")
         shared_voice_state["status"] = "No Mic"
         return
 
+    capture_device = _find_capture_device()
+
     try:
         proc = subprocess.Popen(
-            [arecord_bin, "-D", "pulse", "-r", str(RATE), "-f", "S16_LE", "-c", "1", "-"],
+            [arecord_bin, "-D", capture_device, "-r", str(RATE), "-f", "S16_LE", "-c", "1", "-"],
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
         )
+        # Give it a moment and check it didn't immediately die
+        time.sleep(0.3)
+        if proc.poll() is not None:
+            err = proc.stderr.read().decode(errors="replace").strip()
+            print(f"[Audio] ❌ arecord failed on {capture_device}: {err}")
+            shared_voice_state["status"] = "No Mic"
+            return
     except Exception as e:
         print(f"[Audio] ❌ arecord error: {e}")
         shared_voice_state["status"] = "No Mic"
         return
 
-    print(f"[Audio] ✅ Recording via arecord/PulseAudio @ {RATE} Hz")
+    print(f"[Audio] ✅ Recording from {capture_device} @ {RATE} Hz")
 
     chunk_bytes = CHUNK * 2  # S16_LE = 2 bytes per sample
     buffer_chunks = []
@@ -845,28 +898,23 @@ def main():
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2
                 )
 
-                # Queue TTS with relation, per-person 2-minute cooldown
+                # Announce recognised face — once per 2-minute cooldown.
                 if identity != "Unknown":
                     if now - last_spoken_times.get(identity, 0) > SPEAK_COOLDOWN:
-                        if rel:
-                            speak_text(f"{identity}, your {rel}.")
-                        else:
-                            speak_text(identity)
+                        msg = f"{identity}, your {rel}" if rel else identity
+                        speak_text(msg)
                         last_spoken_times[identity] = now
                         announced_this_frame.add(identity)
 
-        # Voice-only TTS: announce when voice identifies someone not already
-        # announced via face this frame (e.g. person is speaking off-camera).
+        # Voice-only TTS: person speaking off-camera or not yet announced via face.
         if (v_person != "Unknown"
                 and v_score >= FUSION_MIN_VOICE_SCORE
                 and v_active
                 and v_person not in announced_this_frame):
             if now - last_spoken_times.get(v_person, 0) > SPEAK_COOLDOWN:
                 v_rel = relation_db.get(v_person, "")
-                if v_rel:
-                    speak_text(f"{v_person}, your {v_rel}.")
-                else:
-                    speak_text(v_person)
+                msg = f"{v_person}, your {v_rel}" if v_rel else v_person
+                speak_text(msg)
                 last_spoken_times[v_person] = now
 
         # ── Status panel ──────────────────────────────────────────────────

@@ -36,7 +36,7 @@ const AudioRecorderService = {
         sampleRate: recordingConfig.sampleRate,
         channels: recordingConfig.channels,
         bitsPerSample: recordingConfig.bitsPerSample,
-        audioSource: 'default', // For Android
+        audioSource: 6,
         wavFile: recordingConfig.wavFile,
       });
     } catch (error) {
@@ -45,16 +45,15 @@ const AudioRecorderService = {
     }
   },
 
-  /**
-   * Start recording audio
-   */
   start: async () => {
     try {
       if (!RNAudioRecord) {
         throw new Error('RNAudioRecord native module is not available');
       }
 
-      await RNAudioRecord.start();
+      // start() is synchronous on the native bridge; wrap in Promise.resolve so
+      // callers can safely await it without hanging on a non-Promise return.
+      await Promise.resolve(RNAudioRecord.start());
     } catch (error) {
       console.error('AudioRecorder start error:', error);
       throw error;

@@ -133,8 +133,42 @@ def get_voice_encoder() -> LocalECAPAEncoder:
 	return _encoder
 
 
+def _load_waveform(wav_path: str):
+	"""Load a WAV file using Python's built-in wave module (no FFmpeg needed)."""
+	import wave as _wave
+	import numpy as _np
+
+	try:
+		with _wave.open(wav_path, "rb") as f:
+			n_channels = f.getnchannels()
+			samp_width = f.getsampwidth()
+			frame_rate = f.getframerate()
+			n_frames = f.getnframes()
+			raw = f.readframes(n_frames)
+
+		if samp_width == 2:
+			audio = _np.frombuffer(raw, dtype=_np.int16).astype(_np.float32) / 32768.0
+		elif samp_width == 4:
+			audio = _np.frombuffer(raw, dtype=_np.int32).astype(_np.float32) / 2147483648.0
+		else:
+			audio = _np.frombuffer(raw, dtype=_np.uint8).astype(_np.float32) / 128.0 - 1.0
+
+		audio = audio.reshape(-1, n_channels).T  # [channels, samples]
+		waveform = torch.from_numpy(audio)
+
+		if waveform.shape[0] > 1:
+			waveform = torch.mean(waveform, dim=0, keepdim=True)
+
+		return waveform, frame_rate
+
+	except Exception as wav_err:
+		print(f"[VOICE] wave module load failed ({wav_err}), falling back to torchaudio")
+		waveform, sample_rate = torchaudio.load(wav_path)
+		return waveform, sample_rate
+
+
 def _compute_voice_embedding_local(wav_path: str) -> List[float]:
-	waveform, sample_rate = torchaudio.load(wav_path)
+	waveform, sample_rate = _load_waveform(wav_path)
 	if sample_rate != 16000:
 		waveform = torchaudio.functional.resample(waveform, sample_rate, 16000)
 	if waveform.shape[0] > 1:

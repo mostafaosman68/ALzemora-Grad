@@ -7,30 +7,29 @@ from pydantic import BaseModel
 
 router = APIRouter(tags=["ml"])
 
-# Track the running coordinator process
+# Track the running recognizer process
 _recognizer_process: subprocess.Popen | None = None
 
-# Coordinator manages both face/voice recognition and MediScan mode switching
-_COORDINATOR_PATH = os.path.normpath(os.path.join(
+# user_aware_recognizer loads only the people linked to a specific patient
+_ML_DIR = os.path.normpath(os.path.join(
     os.path.dirname(__file__),   # .../backend/app/routes
     "..", "..", "..",             # up to project root
-    "ML", "coordinator.py"
+    "ML",
 ))
+_RECOGNIZER_SCRIPT = os.path.join(_ML_DIR, "user_aware_recognizer.py")
 
 
 class StartRecognitionRequest(BaseModel):
     user_id: str
-    patient_id: str | None = None
 
 
 @router.post("/start-recognition")
 def start_recognition(body: StartRecognitionRequest):
     """
-    Launch the ML coordinator for a specific patient.
-    The coordinator manages mode switching between face/voice recognition and
-    MediScan depending on the system_state stored in MongoDB.
-    Called by the mobile app with { user_id: "...", patient_id: "..." }.
-    patient_id defaults to user_id when not provided (patient using their own account).
+    Launch user_aware_recognizer.py for a specific patient.
+    Called by the mobile app with { user_id: "..." }.
+    Note: on the Pi the primary controller is main_ai.py (GPIO-based).
+    This endpoint is used when triggering recognition directly from the app.
     """
     global _recognizer_process
 
@@ -38,13 +37,10 @@ def start_recognition(body: StartRecognitionRequest):
     if not user_id:
         raise HTTPException(status_code=400, detail="user_id is required")
 
-    # patient_id == user_id for patients; for helpers user_id is the patient ID
-    patient_id = (body.patient_id or user_id).strip()
-
-    if not os.path.exists(_COORDINATOR_PATH):
+    if not os.path.exists(_RECOGNIZER_SCRIPT):
         raise HTTPException(
             status_code=500,
-            detail=f"Coordinator script not found at: {_COORDINATOR_PATH}",
+            detail=f"ML script not found at: {_RECOGNIZER_SCRIPT}",
         )
 
     # If a process is already running, stop it first
@@ -57,7 +53,7 @@ def start_recognition(body: StartRecognitionRequest):
 
     env = os.environ.copy()
     env["USER_ID_FOR_RECOGNITION"] = user_id
-    env["PATIENT_ID"] = patient_id
+    env["PATIENT_ID"] = user_id   # for mode polling inside user_aware_recognizer
 
     env.setdefault("DISPLAY", ":0")
     env.setdefault("XAUTHORITY", os.path.expanduser("~/.Xauthority"))
@@ -66,7 +62,7 @@ def start_recognition(body: StartRecognitionRequest):
 
     log_file = open("/tmp/recognition_log.txt", "w")
     _recognizer_process = subprocess.Popen(
-        [sys.executable, "-u", _COORDINATOR_PATH, user_id, patient_id],
+        [sys.executable, "-u", _RECOGNIZER_SCRIPT, user_id],
         env=env,
         stdout=log_file,
         stderr=log_file,
@@ -75,9 +71,8 @@ def start_recognition(body: StartRecognitionRequest):
     return {
         "status": "started",
         "user_id": user_id,
-        "patient_id": patient_id,
         "pid": _recognizer_process.pid,
-        "message": "ML coordinator started — face/voice recognition active, MediScan on standby.",
+        "message": "Face and voice recognition has been started.",
         "people_count": 0,
     }
 

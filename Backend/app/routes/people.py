@@ -10,6 +10,7 @@ import os
 import re
 import json
 import threading
+import traceback
 from typing import List, Optional
 
 from bson import ObjectId
@@ -61,12 +62,10 @@ async def register_person(
     relation: str = Form(None),
     permissions: str = Form(None),
     face_file: UploadFile = File(...),
-    voice_files: Optional[List[UploadFile]] = File(None),
 ):
     db = get_db()
 
     try:
-        # Verify the user_id belongs to a patient (not a guardian/caregiver)
         user = await db.users.find_one({"_id": ObjectId(user_id)})
         if not user:
             return {"error": f"Patient with id {user_id} does not exist"}
@@ -75,9 +74,7 @@ async def register_person(
 
         friend_folder = sanitize_folder_name(name)
         face_folder = FACES_DIR / friend_folder
-        voice_folder = VOICES_DIR / friend_folder
         face_folder.mkdir(parents=True, exist_ok=True)
-        voice_folder.mkdir(parents=True, exist_ok=True)
 
         temp_face_path = face_folder / face_file.filename
         with open(str(temp_face_path), "wb") as buffer:
@@ -98,52 +95,20 @@ async def register_person(
 
         face_embedding = faces[0].embedding.tolist()
 
-        voice_path_str = None
-        voice_paths = []
-        voice_embedding = None
-
-        valid_voice_files = [vf for vf in (voice_files or []) if vf and vf.filename]
-        if len(valid_voice_files) not in (0, 3):
-            return {"error": "Voice must include exactly 3 .wav files when provided"}
-
-        if len(valid_voice_files) == 3:
-            for idx, voice_file in enumerate(valid_voice_files, start=1):
-                incoming_name = (voice_file.filename or "").lower()
-                if not incoming_name.endswith(".wav"):
-                    return {"error": "Only .wav voice files are supported"}
-
-                voice_path = voice_folder / f"sample_{idx}.wav"
-                with open(str(voice_path), "wb") as buffer:
-                    shutil.copyfileobj(voice_file.file, buffer)
-
-                voice_paths.append(str(voice_path))
-
-            voice_path_str = voice_paths[0] if voice_paths else None
-
-            # Generate embedding using the same local ECAPA loader style used by multimodal flow.
-            try:
-                embeddings = []
-                for saved_voice_path in voice_paths:
-                    embeddings.append(torch.tensor(compute_voice_embedding_from_wav(saved_voice_path)))
-                voice_embedding = torch.stack(embeddings, dim=0).mean(dim=0).tolist()
-            except Exception as emb_err:
-                return {"error": f"Failed to generate voice embedding: {emb_err}"}
-
         person_doc = {
             "user_id": user_id,
             "name": name,
             "relation": relation,
             "photo_url": str(jpg_face_path),
-            "voice": voice_path_str,
-            "voice_files": voice_paths,
+            "voice": None,
+            "voice_files": [],
             "permissions": permissions,
             "face_embedding": face_embedding,
-            "voice_embedding": voice_embedding,
+            "voice_embedding": None,
         }
 
         result = await db.people.insert_one(person_doc)
 
-        # Keep local relation_db.json in sync so multimodal_recognizer.py can read relations.
         _update_relation_db(name, relation or "")
 
         print(f"[REGISTER PERSON] Successfully registered friend '{name}' for patient {user.get('full_name')}")
@@ -154,12 +119,96 @@ async def register_person(
             "patient_id": user_id,
             "patient_name": user.get('full_name'),
             "face_path": str(jpg_face_path),
-            "voice_added": len(voice_paths) == 3,
-            "voice_files_count": len(voice_paths),
-            "voice_embedding_added": voice_embedding is not None,
         }
 
     except Exception as e:
+        return {"error": str(e)}
+
+
+@router.post("/add-voice")
+async def add_voice(
+    user_id: str = Form(...),
+    name: str = Form(...),
+    voice_file_1: UploadFile = File(...),
+    voice_file_2: UploadFile = File(...),
+    voice_file_3: UploadFile = File(...),
+    voice_file_4: UploadFile = File(...),
+):
+    db = get_db()
+
+    try:
+        incoming = [voice_file_1, voice_file_2, voice_file_3, voice_file_4]
+        for vf in incoming:
+            if not (vf.filename or "").lower().endswith(".wav"):
+                return {"error": f"Only .wav files are supported (got: {vf.filename})"}
+
+        print(f"[ADD VOICE] Lookup: user_id={user_id!r} name={name!r}")
+
+        person = await db.people.find_one({"user_id": user_id, "name": name})
+        if not person:
+            person = await db.people.find_one({
+                "user_id": user_id,
+                "name": {"$regex": f"^{re.escape(name)}$", "$options": "i"},
+            })
+        if not person:
+            return {"error": f"No registered person named '{name}' found for this patient"}
+
+        folder_name = sanitize_folder_name(person.get("name", name))
+        voice_folder = VOICES_DIR / folder_name
+        voice_folder.mkdir(parents=True, exist_ok=True)
+        print(f"[ADD VOICE] Saving to folder: {voice_folder}")
+
+        voice_paths = []
+        for idx, vf in enumerate(incoming, start=1):
+            voice_path = voice_folder / f"sample_{idx}.wav"
+            content = await vf.read()
+            size_kb = len(content) / 1024
+            print(f"[ADD VOICE] sample_{idx}.wav — {len(content)} bytes ({size_kb:.1f} KB)")
+            if len(content) < 1000:
+                return {"error": f"sample_{idx}.wav is too small ({len(content)} bytes). The recording may have failed — please try again."}
+            with open(str(voice_path), "wb") as f:
+                f.write(content)
+            voice_paths.append(str(voice_path))
+
+        # Try to generate voice embedding; if it fails we still save the files and
+        # return a partial-success so the user is not left with nothing.
+        voice_embedding = None
+        embedding_warning = None
+        try:
+            embeddings = []
+            for saved_path in voice_paths:
+                wav_size = os.path.getsize(saved_path)
+                print(f"[ADD VOICE] Generating embedding for {saved_path} ({wav_size} bytes)")
+                emb = compute_voice_embedding_from_wav(saved_path)
+                embeddings.append(torch.tensor(emb))
+            voice_embedding = torch.stack(embeddings, dim=0).mean(dim=0).tolist()
+            print(f"[ADD VOICE] Embedding generated: dim={len(voice_embedding)}")
+        except Exception as emb_err:
+            tb = traceback.format_exc()
+            print(f"[ADD VOICE] Embedding failed:\n{tb}")
+            embedding_warning = f"Voice files saved, but embedding failed: {type(emb_err).__name__}: {emb_err}"
+
+        result = await db.people.update_one(
+            {"_id": person["_id"]},
+            {"$set": {
+                "voice": voice_paths[0],
+                "voice_files": voice_paths,
+                "voice_embedding": voice_embedding,
+            }},
+        )
+        print(f"[ADD VOICE] DB update matched={result.matched_count} modified={result.modified_count} embedding={'yes' if voice_embedding else 'no'}")
+
+        if embedding_warning:
+            return {"error": embedding_warning}
+
+        return {
+            "message": f"Voice added successfully for {person.get('name')}",
+            "person_id": str(person["_id"]),
+            "voice_files_count": len(voice_paths),
+        }
+
+    except Exception as e:
+        print(f"[ADD VOICE] Unexpected error: {e}")
         return {"error": str(e)}
 
 

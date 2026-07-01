@@ -1,37 +1,53 @@
 import cv2
-import numpy as np
 import json
+import numpy as np
+import os
+import queue as _queue_module
+import shutil
+import subprocess
+import sys
+import threading
+import time
+
+import pyaudio
+import requests
 import torch
 import torch.nn.functional as F
-import threading
-import pyaudio
-import subprocess
-import os
-import sys
-import time
-import requests
-import warnings
-import queue as _queue_module
+import torchaudio
 from collections import deque
 from PIL import Image
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Suppress pyttsx3 warnings
-warnings.filterwarnings("ignore", category=UserWarning, module="pyttsx3")
+# ── Piper TTS setup ───────────────────────────────────────────────────────
+_PIPER_DIR   = os.path.join(BASE_DIR, "piper")
+_PIPER_BIN   = os.path.join(_PIPER_DIR, "piper")
+_PIPER_MODEL = os.path.join(_PIPER_DIR, "voices", "en_US-lessac-medium.onnx")
 
-TTS_RATE = 120  # words per minute — lower = slower / clearer
 
-# Initialize TTS engine at startup for faster first use
-try:
-    import pyttsx3
-    tts_engine = pyttsx3.init()
-    tts_engine.setProperty("rate", TTS_RATE)
-    TTS_ENGINE_AVAILABLE = True
-    print("✅ TTS engine initialized")
-except Exception as e:
-    TTS_ENGINE_AVAILABLE = False
-    print(f"⚠️ TTS engine not available: {e}")
+def _piper_sample_rate() -> int:
+    try:
+        with open(_PIPER_MODEL + ".json") as f:
+            return int(json.load(f).get("audio", {}).get("sample_rate", 22050))
+    except Exception:
+        return 22050
+
+
+def _piper_env() -> dict:
+    env = os.environ.copy()
+    existing = env.get("LD_LIBRARY_PATH", "")
+    env["LD_LIBRARY_PATH"] = f"{_PIPER_DIR}:{existing}" if existing else _PIPER_DIR
+    env["ESPEAK_DATA_PATH"] = os.path.join(_PIPER_DIR, "espeak-ng-data")
+    return env
+
+
+_PIPER_AVAILABLE   = os.path.isfile(_PIPER_BIN) and os.path.isfile(_PIPER_MODEL)
+_PIPER_SAMPLE_RATE = _piper_sample_rate() if _PIPER_AVAILABLE else 22050
+
+if _PIPER_AVAILABLE:
+    print(f"✅ TTS: Piper neural voice ({_PIPER_MODEL})")
+else:
+    print(f"⚠️ TTS: Piper model not found at {_PIPER_MODEL} — espeak fallback active")
 
 # ==========================================
 # 🔍 DEPENDENCY CHECK
@@ -202,40 +218,35 @@ def normalize_score(raw_cosine: float) -> float:
 _tts_queue = _queue_module.Queue()
 
 
-def _speak_blocking(msg: str):
-    global tts_engine, TTS_ENGINE_AVAILABLE
-    if TTS_ENGINE_AVAILABLE:
+def _speak_blocking(msg: str) -> None:
+    if not _PIPER_AVAILABLE:
+        print(f"[TTS] Piper not found — skipping: {msg}")
+        return
+    try:
+        piper = subprocess.Popen(
+            [_PIPER_BIN, "--model", _PIPER_MODEL, "--output_raw", "--quiet"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=_piper_env(),
+        )
+        aplay = subprocess.Popen(
+            ["aplay", "-D", "pulse", "-r", str(_PIPER_SAMPLE_RATE),
+             "-f", "S16_LE", "-t", "raw", "-q", "-"],
+            stdin=piper.stdout,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        piper.stdout.close()
         try:
-            tts_engine.say(msg)
-            tts_engine.runAndWait()
-            return
-        except Exception:
-            TTS_ENGINE_AVAILABLE = False
-
-    if os.name == 'nt':
-        try:
-            ps_script = (
-                "Add-Type -AssemblyName System.Speech; "
-                "$s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
-                "$s.Speak([Console]::In.ReadToEnd());"
-            )
-            subprocess.run(
-                ["powershell", "-NoProfile", "-Command", ps_script],
-                input=msg, text=True,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            print(f"[TTS] Failed to speak: {msg}")
-    else:
-        try:
-            subprocess.run(
-                ["espeak", "-s", str(TTS_RATE), msg],
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        except FileNotFoundError:
-            print(f"[TTS] {msg}")
+            piper.stdin.write(msg.encode())
+            piper.stdin.close()
+        except BrokenPipeError:
+            pass
+        aplay.wait()
+        piper.wait()
+    except Exception as exc:
+        print(f"[TTS] Piper error: {exc}")
 
 
 def _tts_worker():
@@ -592,28 +603,20 @@ def main(user_id: str):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.65, color, 2
                     )
 
-                # Queue TTS for identified person (per-person 2-minute cooldown)
-                if identity != "Unknown":
+                # Queue TTS — announce "[name] is speaking" once per 2-minute window
+                if identity != "Unknown" and v_active:
                     if now - last_spoken_times.get(identity, 0) > SPEAK_COOLDOWN:
-                        if relation:
-                            speak_text(f"{identity}, your {relation}.")
-                        else:
-                            speak_text(identity)
+                        speak_text(f"{identity} is speaking")
                         last_spoken_times[identity] = now
                         announced_this_frame.add(identity)
 
-        # Voice-only announcement: when voice identifies someone who was not
-        # already announced via face recognition this frame.
+        # Voice-only announcement: person speaking off-camera or not yet announced via face.
         if (v_person != "Unknown"
                 and v_score >= FUSION_MIN_VOICE_SCORE
                 and v_active
                 and v_person not in announced_this_frame):
             if now - last_spoken_times.get(v_person, 0) > SPEAK_COOLDOWN:
-                v_relation = relation_db.get(v_person, "")
-                if v_relation:
-                    speak_text(f"{v_person}, your {v_relation}.")
-                else:
-                    speak_text(v_person)
+                speak_text(f"{v_person} is speaking")
                 last_spoken_times[v_person] = now
 
         # Status panel — include relation for voice-detected person

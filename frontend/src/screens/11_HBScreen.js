@@ -1,4 +1,4 @@
-import React, {useCallback, useMemo, useState} from 'react';
+import React, {useCallback, useMemo, useState, useRef, useEffect} from 'react';
 import {
   View,
   Text,
@@ -7,59 +7,154 @@ import {
   Platform,
   ActivityIndicator,
   RefreshControl,
-  TouchableOpacity,
+  Animated,
+  Easing,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {ScreenBg, TopBar, DarkBtn, BackBtn, COLORS, SectionTitle} from '../components/UI';
 import {useAuth} from '../../App';
-import {fetchLiveHeartbeat, reportHeartbeat} from '../services/heartbeatService';
+import {fetchLiveHeartbeat} from '../services/heartbeatService';
+import {requestBlePermissions, startHeartRateMonitor} from '../services/bleHeartRateService';
 
 const POLL_INTERVAL_MS = 3000;
 
 function formatLastSeen(lastSeenAt, secondsAgo) {
-  if (!lastSeenAt) return 'No readings yet';
-
+  if (!lastSeenAt) {
+    return 'No readings yet';
+  }
   const date = new Date(lastSeenAt);
   if (Number.isNaN(date.getTime())) {
     return 'No readings yet';
   }
-
-  const seenTime = date.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  if (typeof secondsAgo === 'number') {
-    return `${seenTime} • ${secondsAgo}s ago`;
-  }
-
-  return seenTime;
+  const seenTime = date.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  return typeof secondsAgo === 'number' ? `${seenTime} • ${secondsAgo}s ago` : seenTime;
 }
 
-function HeartPulse({active}) {
+function HeartPulse({active, bpm}) {
+  const heartScale = useRef(new Animated.Value(1)).current;
+  const ringScale  = useRef(new Animated.Value(1)).current;
+  const ringOpacity = useRef(new Animated.Value(0)).current;
+  const animRef = useRef(null);
+
+  useEffect(() => {
+    if (animRef.current) {
+      animRef.current.stop();
+      animRef.current = null;
+    }
+
+    if (!active) {
+      heartScale.setValue(1);
+      ringScale.setValue(1);
+      ringOpacity.setValue(0);
+      return;
+    }
+
+    // Beat interval from live BPM; clamp to a sensible range
+    const safeBpm = bpm && bpm > 20 && bpm < 220 ? bpm : 70;
+    const beatMs = (60 / safeBpm) * 1000;
+    const contractMs = beatMs * 0.25;
+    const expandMs   = beatMs * 0.75;
+
+    const loop = Animated.loop(
+      Animated.parallel([
+        // Heart: quick squeeze then relax
+        Animated.sequence([
+          Animated.timing(heartScale, {
+            toValue: 1.22,
+            duration: contractMs,
+            easing: Easing.out(Easing.quad),
+            useNativeDriver: true,
+          }),
+          Animated.timing(heartScale, {
+            toValue: 1,
+            duration: expandMs,
+            easing: Easing.in(Easing.quad),
+            useNativeDriver: true,
+          }),
+        ]),
+        // Ring: expand and fade out on each beat
+        Animated.sequence([
+          Animated.parallel([
+            Animated.timing(ringScale, {
+              toValue: 1.7,
+              duration: beatMs * 0.6,
+              easing: Easing.out(Easing.quad),
+              useNativeDriver: true,
+            }),
+            Animated.timing(ringOpacity, {
+              toValue: 0.55,
+              duration: beatMs * 0.15,
+              useNativeDriver: true,
+            }),
+          ]),
+          Animated.timing(ringOpacity, {
+            toValue: 0,
+            duration: beatMs * 0.4,
+            useNativeDriver: true,
+          }),
+          // Reset ring for next beat without visible jump
+          Animated.parallel([
+            Animated.timing(ringScale,   {toValue: 1, duration: 0, useNativeDriver: true}),
+            Animated.timing(ringOpacity, {toValue: 0, duration: 0, useNativeDriver: true}),
+          ]),
+        ]),
+      ]),
+    );
+
+    animRef.current = loop;
+    loop.start();
+
+    return () => {
+      loop.stop();
+      animRef.current = null;
+    };
+  }, [active, bpm, heartScale, ringScale, ringOpacity]);
+
   return (
-    <View style={[styles.pulseWrap, active && styles.pulseWrapActive]}>
-      <View style={[styles.pulseRing, active && styles.pulseRingActive]} />
-      <View style={styles.pulseCore}>
+    <View style={styles.pulseWrap}>
+      {/* Expanding ring */}
+      <Animated.View
+        style={[
+          styles.pulseRing,
+          {
+            transform: [{scale: ringScale}],
+            opacity: ringOpacity,
+          },
+        ]}
+      />
+      {/* Beating heart core */}
+      <Animated.View
+        style={[styles.pulseCore, {transform: [{scale: heartScale}]}]}>
         <Text style={styles.heartEmoji}>♥</Text>
-      </View>
+      </Animated.View>
     </View>
   );
 }
 
 export default function HBScreen({navigation}) {
   const {user} = useAuth();
+
+  // Backend data (always polled — used by guardians and as fallback for patients)
   const [reading, setReading] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
 
+  // Phone BLE state (patients only — direct sensor connection)
+  // bleReading = {bpm: number, ts: number} so every notification triggers a re-render
+  const [bleReading, setBleReading] = useState(null);
+  const [bleStatus, setBleStatus] = useState('idle'); // idle|scanning|connecting|connected|disconnected|error
+  const [bleError, setBleError] = useState('');
+  const [bleCount, setBleCount] = useState(0); // total BLE notifications received
+
   const isHelper = user?.role === 'Guardian' || user?.role === 'CareGiver';
+  const isPatient = user?.role === 'User';
   const targetUserId = isHelper ? user?.patient_id : user?.user_id;
   const targetLabel = isHelper ? user?.patient_name : user?.full_name;
 
   const displayReading = reading?.latest_reading || reading;
 
+  // ── Backend polling ──────────────────────────────────────
   const loadReading = useCallback(async () => {
     if (!targetUserId) {
       setLoading(false);
@@ -67,7 +162,6 @@ export default function HBScreen({navigation}) {
       setReading(null);
       return;
     }
-
     try {
       const data = await fetchLiveHeartbeat(targetUserId);
       setReading(data);
@@ -85,70 +179,134 @@ export default function HBScreen({navigation}) {
     loadReading();
   }, [loadReading]);
 
+  // ── Focus: start polling + BLE ───────────────────────────
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
+      let stopBle = null;
+
+      // Backend polling (always)
       setLoading(true);
       loadReading();
-
       const timer = setInterval(() => {
         if (isActive) {
           loadReading();
         }
       }, POLL_INTERVAL_MS);
 
+      // Phone BLE — patient only
+      if (isPatient && targetUserId) {
+        requestBlePermissions().then(granted => {
+          if (!isActive) {
+            return;
+          }
+          if (!granted) {
+            setBleError('Bluetooth permission denied. Enable in phone settings.');
+            setBleStatus('error');
+            return;
+          }
+          stopBle = startHeartRateMonitor({
+            patientId: targetUserId,
+            threshold: reading?.threshold || 90,
+            onBpm: packet => {
+              if (isActive) {
+                setBleReading(packet); // {bpm, ts} — new object every time
+                setBleCount(n => n + 1);
+                setBleError('');
+              }
+            },
+            onStatus: status => {
+              if (isActive) {
+                setBleStatus(status);
+                if (status === 'disconnected' || status === 'error') {
+                  setBleReading(null);
+                }
+              }
+            },
+            onError: msg => {
+              if (isActive) {
+                setBleError(msg);
+                setBleStatus('error');
+                setBleReading(null);
+              }
+            },
+          });
+        });
+      }
+
       return () => {
         isActive = false;
         clearInterval(timer);
+        if (stopBle) {
+          stopBle();
+        }
+        setBleReading(null);
+        setBleStatus('idle');
+        setBleError('');
+        setBleCount(0);
       };
-    }, [loadReading]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadReading, isPatient, targetUserId]),
   );
 
-  const live = Boolean(displayReading?.sensor_connected) || displayReading?.status === 'live';
-  const bpmText = displayReading?.heart_rate != null ? String(displayReading.heart_rate) : '--';
-  const statusText = live
-    ? 'Sensor Connected'
-    : displayReading?.status === 'no_data'
-      ? 'Waiting for Sensor'
-      : 'Sensor Offline';
-  const statusHint = displayReading?.alert_triggered
-    ? 'Heart rate is above the configured threshold.'
-    : live
-      ? 'Live data is arriving from the sensor.'
-      : 'Open the sensor device to start the live feed.';
+  // ── Derived display values ───────────────────────────────
+  const bleConnected = bleStatus === 'connected';
 
-  const metricCards = useMemo(() => ([
-    {
-      label: 'Threshold',
-      value: reading?.threshold != null ? `${reading.threshold} BPM` : '--',
-    },
-    {
-      label: 'Last Seen',
-      value: formatLastSeen(reading?.last_seen_at, reading?.last_seen_seconds_ago),
-    },
-    {
-      label: 'Source',
-      value: reading?.source || 'sensor',
-    },
-  ]), [reading]);
+  // For patients: prefer live BLE BPM; fall back to backend reading.
+  // For guardians: always use backend reading (they aren't wearing the sensor).
+  const live = isPatient ? bleConnected : Boolean(reading?.sensor_connected);
 
-  const handleDemoReading = async () => {
-    if (!targetUserId) return;
+  const bleBpm = bleReading?.bpm ?? null;
 
-    try {
-      setRefreshing(true);
-      await reportHeartbeat({
-        patientId: targetUserId,
-        heartRate: 67,
-        threshold: reading?.threshold || 120,
-        source: 'demo',
-      });
-      await loadReading();
-    } catch (err) {
-      setError(err.message || 'Unable to send demo reading');
-      setRefreshing(false);
+  const bpmText =
+    (bleBpm ?? reading?.heart_rate ?? displayReading?.heart_rate) != null
+      ? String(bleBpm ?? reading?.heart_rate ?? displayReading?.heart_rate)
+      : '--';
+
+  const statusText = (() => {
+    if (isPatient) {
+      if (bleConnected) {return 'Sensor Connected';}
+      if (bleStatus === 'scanning') {return 'Scanning…';}
+      if (bleStatus === 'connecting') {return 'Connecting…';}
+      if (bleStatus === 'disconnected') {return 'Sensor Disconnected';}
+      if (bleStatus === 'error') {return 'Connection Failed';}
+      return 'Waiting for Sensor';
     }
-  };
+    // Guardian/Caregiver
+    if (reading?.sensor_connected) {return 'Sensor Connected';}
+    if (reading?.status === 'no_data' || !reading) {return 'Waiting for Sensor';}
+    return 'Sensor Offline';
+  })();
+
+  const statusHint = reading?.alert_triggered
+    ? 'Heart rate is above the configured threshold.'
+    : bleConnected && bleReading?.ts
+    ? `Live · ${bleCount} packets · ${new Date(bleReading.ts).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'})}`
+    : live && !isPatient && reading?.last_seen_seconds_ago != null
+    ? `Live · last reading ${reading.last_seen_seconds_ago}s ago`
+    : live
+    ? 'Live data is arriving from the sensor.'
+    : isPatient
+    ? 'Make sure Bluetooth is on and the Polar H10 is worn on your chest.'
+    : 'Open the sensor on the patient\'s phone to start the live feed.';
+
+  const metricCards = useMemo(
+    () => [
+      {
+        label: 'Threshold',
+        value: reading?.threshold != null ? `${reading.threshold} BPM` : '--',
+      },
+      {
+        label: 'Last Seen',
+        value: formatLastSeen(reading?.last_seen_at, reading?.last_seen_seconds_ago),
+      },
+      {
+        label: 'Source',
+        value: bleConnected ? 'Phone BLE' : reading?.source || '--',
+      },
+    ],
+    [reading, bleConnected],
+  );
 
   return (
     <ScreenBg>
@@ -183,7 +341,7 @@ export default function HBScreen({navigation}) {
           </View>
 
           <View style={styles.heartRow}>
-            <HeartPulse active={live} />
+            <HeartPulse active={live} bpm={bleBpm ?? reading?.heart_rate} />
             <View style={styles.bpmBlock}>
               <Text style={styles.bpmValue}>{bpmText}</Text>
               <Text style={styles.bpmLabel}>BPM</Text>
@@ -192,7 +350,9 @@ export default function HBScreen({navigation}) {
           </View>
         </View>
 
-        <SectionTitle hint="Auto refreshes every 3 seconds">Live Reading</SectionTitle>
+        <SectionTitle hint={bleConnected ? 'Live from your Polar H10' : 'Auto refreshes every 3 seconds'}>
+          Live Reading
+        </SectionTitle>
 
         {!targetUserId ? (
           <View style={styles.emptyStateCard}>
@@ -204,7 +364,7 @@ export default function HBScreen({navigation}) {
         ) : null}
 
         <View style={styles.metricsGrid}>
-          {metricCards.map((item) => (
+          {metricCards.map(item => (
             <View key={item.label} style={styles.metricCard}>
               <Text style={styles.metricLabel}>{item.label}</Text>
               <Text style={styles.metricValue} numberOfLines={2}>
@@ -214,12 +374,19 @@ export default function HBScreen({navigation}) {
           ))}
         </View>
 
-        {displayReading?.alert_triggered ? (
+        {reading?.alert_triggered ? (
           <View style={styles.alertCard}>
             <Text style={styles.alertTitle}>Attention needed</Text>
             <Text style={styles.alertText}>
               The current heart rate is above the configured threshold and helpers may be notified.
             </Text>
+          </View>
+        ) : null}
+
+        {bleError ? (
+          <View style={styles.bleErrorCard}>
+            <Text style={styles.bleErrorTitle}>Bluetooth</Text>
+            <Text style={styles.bleErrorText}>{bleError}</Text>
           </View>
         ) : null}
 
@@ -229,16 +396,7 @@ export default function HBScreen({navigation}) {
           </View>
         ) : null}
 
-        <View style={styles.actionsRow}>
-          <DarkBtn title="Refresh Now" onPress={onRefresh} style={styles.actionBtn} disabled={refreshing} />
-          <TouchableOpacity
-            style={styles.demoBtn}
-            onPress={handleDemoReading}
-            activeOpacity={0.85}
-            disabled={!targetUserId || refreshing}>
-            <Text style={styles.demoBtnText}>Send Demo Reading</Text>
-          </TouchableOpacity>
-        </View>
+        <DarkBtn title="Refresh Now" onPress={onRefresh} style={styles.actionBtn} disabled={refreshing} />
 
         <BackBtn onPress={() => navigation.navigate('Dashboard')} />
       </ScrollView>
@@ -320,18 +478,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  pulseWrapActive: {
-    transform: [{scale: 1}],
-  },
   pulseRing: {
     position: 'absolute',
     width: 118,
     height: 118,
     borderRadius: 59,
-    backgroundColor: 'rgba(239,68,68,0.15)',
-  },
-  pulseRingActive: {
-    backgroundColor: 'rgba(248,113,113,0.22)',
+    backgroundColor: 'rgba(248,113,113,0.55)',
   },
   pulseCore: {
     width: 92,
@@ -439,6 +591,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
+  bleErrorCard: {
+    backgroundColor: 'rgba(251,191,36,0.10)',
+    borderRadius: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(251,191,36,0.22)',
+  },
+  bleErrorTitle: {
+    color: '#fcd34d',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 2,
+  },
+  bleErrorText: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 12,
+  },
   errorCard: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 16,
@@ -450,23 +619,7 @@ const styles = StyleSheet.create({
     color: '#ffd1d1',
     fontSize: 12,
   },
-  actionsRow: {
-    gap: 10,
-  },
   actionBtn: {
     marginTop: 0,
-  },
-  demoBtn: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  demoBtnText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '600',
   },
 });

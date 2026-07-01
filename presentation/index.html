@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Alzemora — Graduation Project Presentation</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root{
+    --bg:#ffffff;
+    --ink:#0f172a;
+    --muted:#64748b;
+    --panel:#f8fafc;
+    --panel-2:#f1f5f9;
+    --border:#e2e8f0;
+    --primary:#2563eb;
+    --primary-dark:#1d4ed8;
+    --primary-light:#eff6ff;
+    --teal:#0d9488;
+    --teal-light:#f0fdfa;
+    --amber:#d97706;
+    --amber-light:#fffbeb;
+    --rose:#e11d48;
+    --rose-light:#fff1f2;
+    --radius:16px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:#dbe3ee;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--ink);}
+
+  .deck{position:relative;width:100vw;height:100vh;overflow:hidden;}
+
+  .slide{
+    position:absolute;inset:0;
+    display:none;
+    background:var(--bg);
+    flex-direction:column;
+  }
+  .slide.active{display:flex;}
+
+  .slide-top{height:6px;width:100%;background:linear-gradient(90deg,var(--primary),var(--teal));flex-shrink:0;}
+
+  .slide-body{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+    padding:48px 88px 24px 88px;
+    overflow:hidden;
+  }
+
+  .kicker{
+    text-transform:uppercase;
+    letter-spacing:2.5px;
+    font-size:13px;
+    font-weight:700;
+    color:var(--primary);
+    margin-bottom:10px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .kicker .num{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:26px;height:26px;border-radius:50%;
+    background:var(--primary);color:#fff;font-size:12px;
+  }
+  .badge-star{
+    margin-left:auto;
+    background:var(--amber-light);
+    color:var(--amber);
+    border:1px solid #fde68a;
+    border-radius:999px;
+    padding:4px 14px;
+    font-size:12px;
+    letter-spacing:1px;
+  }
+
+  h1.title{
+    font-size:42px;
+    line-height:1.15;
+    margin:0 0 6px 0;
+    font-weight:800;
+    color:var(--ink);
+  }
+  .subtitle{
+    font-size:18px;
+    color:var(--muted);
+    margin:0 0 28px 0;
+    font-weight:500;
+  }
+
+  .content{flex:1;overflow:hidden;display:flex;flex-direction:column;justify-content:center;}
+
+  .footer{
+    flex-shrink:0;
+    display:flex;justify-content:space-between;align-items:center;
+    padding:14px 88px;
+    border-top:1px solid var(--border);
+    font-size:12.5px;color:var(--muted);
+  }
+  .footer .dot{color:var(--border);margin:0 8px;}
+
+  ul.bullets{list-style:none;margin:0;padding:0;}
+  ul.bullets li{
+    position:relative;
+    padding:10px 0 10px 30px;
+    font-size:19px;
+    line-height:1.45;
+    border-bottom:1px solid var(--panel-2);
+  }
+  ul.bullets li:last-child{border-bottom:none;}
+  ul.bullets li::before{
+    content:"";
+    position:absolute;left:0;top:20px;
+    width:9px;height:9px;border-radius:2px;
+    background:var(--primary);
+  }
+  ul.bullets li b{color:var(--ink);}
+  ul.bullets li .sub{display:block;color:var(--muted);font-size:15px;margin-top:2px;}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:24px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:20px;}
+  .grid4{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:18px;}
+
+  .card{
+    background:var(--panel);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:22px 24px;
+  }
+  .card h3{margin:0 0 8px 0;font-size:17px;display:flex;align-items:center;gap:10px;}
+  .card p{margin:0;color:var(--muted);font-size:14.5px;line-height:1.5;}
+  .card .icon{
+    width:34px;height:34px;border-radius:9px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--primary-light);color:var(--primary);
+  }
+  .card.teal .icon{background:var(--teal-light);color:var(--teal);}
+  .card.amber .icon{background:var(--amber-light);color:var(--amber);}
+  .card.rose .icon{background:var(--rose-light);color:var(--rose);}
+
+  .stat{
+    text-align:center;background:var(--panel);border:1px solid var(--border);
+    border-radius:var(--radius);padding:22px 10px;
+  }
+  .stat .n{font-size:30px;font-weight:800;color:var(--primary);}
+  .stat .l{font-size:13px;color:var(--muted);margin-top:4px;}
+
+  .pill{
+    display:inline-block;background:var(--panel);border:1px solid var(--border);
+    border-radius:999px;padding:6px 16px;font-size:13.5px;color:var(--ink);margin:4px 6px 4px 0;
+  }
+
+  /* Architecture diagram */
+  .flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;justify-content:center;}
+  .flow-box{
+    background:var(--panel);border:1.5px solid var(--border);border-radius:14px;
+    padding:18px 20px;min-width:170px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:8px;
+  }
+  .flow-box .icon-big{
+    width:46px;height:46px;border-radius:12px;background:var(--primary-light);color:var(--primary);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .flow-box b{font-size:15px;}
+  .flow-box span{font-size:12px;color:var(--muted);}
+  .flow-arrow{display:flex;align-items:center;justify-content:center;padding:0 14px;color:var(--muted);font-size:22px;}
+  .flow-col{display:flex;flex-direction:column;gap:14px;align-items:center;}
+
+  /* Hero callout for sensor slides */
+  .hero-row{display:flex;gap:32px;align-items:center;flex:1;}
+  .hero-icon{
+    flex-shrink:0;width:160px;height:160px;border-radius:28px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .hero-icon.amber{background:linear-gradient(145deg,#fff7e6,#ffedc2);}
+  .hero-icon.rose{background:linear-gradient(145deg,#ffe9ee,#ffd2dd);}
+  .hero-icon.teal{background:linear-gradient(145deg,#e6fbf8,#c8f5ee);}
+
+  .spec-table{width:100%;border-collapse:collapse;font-size:15px;}
+  .spec-table td{padding:9px 4px;border-bottom:1px solid var(--panel-2);}
+  .spec-table td:first-child{color:var(--muted);width:38%;}
+  .spec-table td:last-child{font-weight:600;}
+
+  code.inline{
+    background:var(--panel-2);border:1px solid var(--border);border-radius:6px;
+    padding:2px 7px;font-size:13.5px;font-family:Menlo,Consolas,monospace;color:#0f172a;
+  }
+
+  /* Title slide */
+  .title-slide{justify-content:center;align-items:flex-start;padding:0 100px;}
+  .title-slide .brandmark{
+    width:72px;height:72px;border-radius:18px;
+    background:linear-gradient(145deg,var(--primary),var(--teal));
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:28px;
+    margin-bottom:30px;
+  }
+  .title-slide h1{font-size:64px;margin:0 0 14px 0;font-weight:800;}
+  .title-slide .lede{font-size:22px;color:var(--muted);max-width:760px;line-height:1.5;margin-bottom:46px;}
+  .title-meta{display:flex;gap:40px;border-top:1px solid var(--border);padding-top:22px;width:100%;max-width:760px;}
+  .title-meta div{font-size:14px;color:var(--muted);}
+  .title-meta div b{display:block;color:var(--ink);font-size:15px;margin-bottom:3px;}
+
+  /* Thank you slide */
+  .end-slide{align-items:center;justify-content:center;text-align:center;}
+  .end-slide h1{font-size:56px;}
+
+  /* Number ribbon for agenda */
+  .agenda-item{display:flex;align-items:center;gap:18px;padding:13px 0;border-bottom:1px solid var(--panel-2);}
+  .agenda-item .ix{font-size:13px;color:var(--primary);font-weight:800;width:30px;}
+  .agenda-item .tx{font-size:17.5px;}
+  .agenda-item .tx .s{display:block;color:var(--muted);font-size:13px;}
+
+  /* nav */
+  .nav{
+    position:fixed;bottom:18px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:14px;
+    background:rgba(15,23,42,0.85);backdrop-filter:blur(6px);
+    padding:9px 16px;border-radius:999px;z-index:50;
+    box-shadow:0 8px 24px rgba(0,0,0,0.18);
+  }
+  .nav button{
+    background:transparent;border:none;color:#fff;cursor:pointer;
+    width:30px;height:30px;border-radius:50%;font-size:16px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .nav button:hover{background:rgba(255,255,255,0.15);}
+  .nav .counter{color:#cbd5e1;font-size:13px;min-width:54px;text-align:center;}
+
+  @media print{
+    body{background:#fff;}
+    .nav{display:none;}
+    .slide{position:relative;display:flex !important;page-break-after:always;height:100vh;}
+  }
+</style>
+</head>
+<body>
+
+<div class="deck" id="deck">
+
+  <!-- 1. TITLE -->
+  <section class="slide active">
+    <div class="slide-top"></div>
+    <div class="slide-body title-slide">
+      <div class="brandmark">A</div>
+      <h1>Alzemora</h1>
+      <div class="lede">An AI-powered, sensor-driven smart care companion that helps Alzheimer's &amp; elderly patients recognize loved ones, take medication safely, and stay monitored — automatically, with no manual operation required.</div>
+      <div class="title-meta">
+        <div><b>[Student Name(s)]</b>Graduation Project</div>
+        <div><b>[Faculty / University]</b>Department of [Your Department]</div>
+        <div><b>[Supervisor Name]</b>Project Supervisor</div>
+        <div><b>2026</b>Final Presentation</div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>1 / 22</span></div>
+  </section>
+
+  <!-- 2. AGENDA -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">02</span> Overview</div>
+      <h1 class="title">Agenda</h1>
+      <div class="subtitle">What we'll walk through today</div>
+      <div class="content">
+        <div class="grid2" style="gap:0 60px;">
+          <div>
+            <div class="agenda-item"><span class="ix">01</span><span class="tx">Problem &amp; Motivation<span class="s">Why elderly / Alzheimer's care needs this</span></span></div>
+            <div class="agenda-item"><span class="ix">02</span><span class="tx">Objectives &amp; System Architecture</span></div>
+            <div class="agenda-item"><span class="ix">03</span><span class="tx">Hardware &amp; Software Stack</span></div>
+            <div class="agenda-item"><span class="ix">04</span><span class="tx">Face &amp; Voice Recognition</span></div>
+            <div class="agenda-item"><span class="ix">05</span><span class="tx">MediScan — Medication Verification</span></div>
+            <div class="agenda-item"><span class="ix">06</span><span class="tx">LDR Sensor — Automatic Wear Detection <span class="s">key innovation</span></span></div>
+          </div>
+          <div>
+            <div class="agenda-item"><span class="ix">07</span><span class="tx">Heart Rate Sensor in the Mobile App <span class="s">key innovation</span></span></div>
+            <div class="agenda-item"><span class="ix">08</span><span class="tx">Sensor-Triggered Automation on Linux <span class="s">key innovation</span></span></div>
+            <div class="agenda-item"><span class="ix">09</span><span class="tx">Mobile App, Database &amp; Alerts</span></div>
+            <div class="agenda-item"><span class="ix">10</span><span class="tx">Engineering Challenges</span></div>
+            <div class="agenda-item"><span class="ix">11</span><span class="tx">Future Work &amp; Conclusion</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>2 / 22</span></div>
+  </section>
+
+  <!-- 3. PROBLEM -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">03</span> Motivation</div>
+      <h1 class="title">The Problem</h1>
+      <div class="subtitle">Caring for Alzheimer's &amp; elderly patients is a 24/7 job that no family can fully staff</div>
+      <div class="content">
+        <div class="grid4">
+          <div class="card"><h3><span class="icon">①</span>Memory loss</h3><p>Patients struggle to recognize even close family and friends, causing distress and confusion.</p></div>
+          <div class="card amber"><h3><span class="icon">②</span>Missed medication</h3><p>Forgotten or wrong doses are a leading cause of hospital readmission in dementia care.</p></div>
+          <div class="card rose"><h3><span class="icon">③</span>Unnoticed health events</h3><p>Abnormal heart rate or distress can go undetected when no one is in the room.</p></div>
+          <div class="card teal"><h3><span class="icon">④</span>Caregiver burnout</h3><p>Guardians cannot watch a patient every minute of every day.</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>3 / 22</span></div>
+  </section>
+
+  <!-- 4. OBJECTIVES -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">04</span> Goals</div>
+      <h1 class="title">Project Objectives</h1>
+      <div class="subtitle">Build a low-cost, wearable assistant that needs zero manual operation</div>
+      <div class="content">
+        <ul class="bullets">
+          <li><b>Recognize people automatically</b> — identify family/friends by face and voice and remind the patient who they are<span class="sub">Runs on a Raspberry Pi 5 built into a pair of smart glasses</span></li>
+          <li><b>Verify medication intake</b> — recognize the medication box visually and confirm the dose was actually taken</li>
+          <li><b>Monitor vital signs continuously</b> — stream live heart rate from a wearable strap straight into the patient's phone</li>
+          <li><b>Activate itself physically</b> — turn the whole pipeline on the instant the glasses are worn, with no app, button, or caregiver action</li>
+          <li><b>Keep guardians informed in real time</b> — push alerts the moment something needs attention</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>4 / 22</span></div>
+  </section>
+
+  <!-- 5. ARCHITECTURE -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">05</span> Architecture</div>
+      <h1 class="title">System Architecture</h1>
+      <div class="subtitle">Three connected layers, talking over a single FastAPI backend</div>
+      <div class="content">
+        <div class="flow" style="margin-bottom:18px;">
+          <div class="flow-box">
+            <div class="icon-big">👓</div>
+            <b>Smart Glasses</b>
+            <span>Raspberry Pi 5 · Camera · Mic/Speaker · LDR sensor</span>
+          </div>
+          <div class="flow-arrow">⇄</div>
+          <div class="flow-box">
+            <div class="icon-big">☁</div>
+            <b>FastAPI Backend</b>
+            <span>MongoDB Atlas · Firebase FCM</span>
+          </div>
+          <div class="flow-arrow">⇄</div>
+          <div class="flow-box">
+            <div class="icon-big">📱</div>
+            <b>Mobile App</b>
+            <span>React Native · Patient / Guardian / Caregiver</span>
+          </div>
+        </div>
+        <div class="flow">
+          <div class="flow-box">
+            <div class="icon-big">♥</div>
+            <b>Polar H10 Strap</b>
+            <span>BLE heart-rate sensor</span>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box">
+            <div class="icon-big">📡</div>
+            <b>Phone Bluetooth</b>
+            <span>Decodes &amp; reports BPM</span>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box">
+            <div class="icon-big">🔔</div>
+            <b>Alert Engine</b>
+            <span>Threshold check → push notification</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>5 / 22</span></div>
+  </section>
+
+  <!-- 6. HARDWARE -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">06</span> Hardware</div>
+      <h1 class="title">Hardware Components</h1>
+      <div class="subtitle">Everything mounted on (or paired to) the patient</div>
+      <div class="content">
+        <div class="grid3">
+          <div class="card"><h3><span class="icon">🧠</span>Raspberry Pi 5</h3><p>On-board compute for the smart glasses — runs all ML inference locally.</p></div>
+          <div class="card"><h3><span class="icon">📷</span>Camera Module</h3><p>Shared by face/voice recognition and MediScan medication scanning.</p></div>
+          <div class="card"><h3><span class="icon">🎙</span>Mic &amp; Speaker</h3><p>Voice recognition input + Piper neural text-to-speech announcements.</p></div>
+          <div class="card amber"><h3><span class="icon">💡</span>LDR Light Sensor</h3><p>GPIO-connected sensor that detects when the glasses are being worn.</p></div>
+          <div class="card rose"><h3><span class="icon">♥</span>Polar H10 Strap</h3><p>Chest-worn Bluetooth heart-rate monitor, paired directly to the phone.</p></div>
+          <div class="card"><h3><span class="icon">📱</span>Guardian's Phone</h3><p>Android device running the React Native companion app.</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>6 / 22</span></div>
+  </section>
+
+  <!-- 7. SOFTWARE STACK -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">07</span> Stack</div>
+      <h1 class="title">Software &amp; ML Stack</h1>
+      <div class="content">
+        <div class="grid2">
+          <div class="card">
+            <h3><span class="icon">⚙</span>Backend</h3>
+            <p><b>FastAPI</b> + <b>MongoDB Atlas</b> (async via PyMongo/Motor) · <b>Firebase Cloud Messaging</b> for push alerts · runs as a Linux <code class="inline">systemd</code> service on the Pi.</p>
+          </div>
+          <div class="card">
+            <h3><span class="icon">📱</span>Mobile App</h3>
+            <p><b>React Native 0.73</b> · <code class="inline">react-native-ble-plx</code> for Bluetooth · role-based UI for Patient, Guardian and Caregiver.</p>
+          </div>
+          <div class="card teal">
+            <h3><span class="icon">🧬</span>Recognition Models</h3>
+            <p><b>InsightFace</b> for face embeddings · <b>ECAPA-TDNN</b> for voice-print embeddings · combined in a multimodal recognizer.</p>
+          </div>
+          <div class="card amber">
+            <h3><span class="icon">💊</span>MediScan &amp; Voice</h3>
+            <p><b>ORB</b> feature matching + <b>EasyOCR</b> to read medication labels · <b>Piper</b> neural TTS for spoken reminders.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>7 / 22</span></div>
+  </section>
+
+  <!-- 8. FACE/VOICE RECOGNITION -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">08</span> Module</div>
+      <h1 class="title">Face &amp; Voice Recognition</h1>
+      <div class="subtitle">Helping the patient recognize the people in front of them</div>
+      <div class="content">
+        <ul class="bullets">
+          <li><b>Multimodal matching</b> — combines a face embedding (InsightFace) and a voice-print embedding (ECAPA-TDNN) for higher confidence than either alone</li>
+          <li><b>Enrollment</b> — caregivers register a person's photo and a short voice sample once, from the mobile app's "Add Friend" screen</li>
+          <li><b>Storage</b> — embeddings are stored as JSON arrays in the MongoDB <code class="inline">people</code> collection, linked to the patient and a relationship label (e.g. "Daughter")</li>
+          <li><b>Output</b> — the glasses speak the result aloud through Piper TTS: <i>"This is Sarah, your daughter."</i></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>8 / 22</span></div>
+  </section>
+
+  <!-- 9. MEDISCAN -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">09</span> Module</div>
+      <h1 class="title">MediScan — Medication Verification</h1>
+      <div class="subtitle">Closing the loop between "reminder" and "actually taken"</div>
+      <div class="content">
+        <div class="flow" style="margin-bottom:10px;">
+          <div class="flow-box"><div class="icon-big">⏰</div><b>Schedule due</b><span>Voice announcement plays</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box"><div class="icon-big">📷</div><b>Camera switches</b><span>ORB + EasyOCR scan the box</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box"><div class="icon-big">✓</div><b>Confirmed</b><span>"Well done" + dashboard cleared</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box"><div class="icon-big">⚠</div><b>If missed (5 min)</b><span>Alert sent to guardians</span></div>
+        </div>
+        <ul class="bullets">
+          <li>Face/voice recognition and MediScan <b>share the same camera</b> — only one can run at a time, coordinated automatically (see slide 13)</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>9 / 22</span></div>
+  </section>
+
+  <!-- 10. LDR SENSOR ★ -->
+  <section class="slide">
+    <div class="slide-top" style="background:linear-gradient(90deg,var(--amber),#fbbf24);"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">10</span> Hardware Sensor <span class="badge-star">★ Key Innovation</span></div>
+      <h1 class="title">LDR Light Sensor — Automatic Wear Detection</h1>
+      <div class="subtitle">The glasses know when they're being worn — without a single button</div>
+      <div class="content">
+        <div class="hero-row">
+          <div class="hero-icon amber"><span style="font-size:72px;">💡</span></div>
+          <div style="flex:1;">
+            <table class="spec-table">
+              <tr><td>Sensor type</td><td>Light-Dependent Resistor (LDR), mounted on the glasses frame</td></tr>
+              <tr><td>Connection</td><td>Raspberry Pi GPIO pin <code class="inline">17</code> (BCM numbering, digital input)</td></tr>
+              <tr><td>Signal logic</td><td><b>HIGH (1)</b> = light reaching sensor → glasses worn &nbsp;·&nbsp; <b>LOW (0)</b> = blocked/dark → removed</td></tr>
+              <tr><td>Debounce</td><td>Requires <b>3 consecutive HIGH reads</b> (~0.9s) before activating — filters out false flickers</td></tr>
+              <tr><td>Poll rate</td><td>Read every <b>0.3 seconds</b> in a continuous background loop</td></tr>
+              <tr><td>Action taken</td><td>Automatically <b>starts</b> the face/voice recognition camera process when worn, <b>stops</b> it the moment it's removed</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>10 / 22</span></div>
+  </section>
+
+  <!-- 11. HEART RATE SENSOR ★ -->
+  <section class="slide">
+    <div class="slide-top" style="background:linear-gradient(90deg,var(--rose),#fb7185);"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">11</span> Mobile Sensor <span class="badge-star">★ Key Innovation</span></div>
+      <h1 class="title">Heart Rate Sensor in the Mobile App</h1>
+      <div class="subtitle">Live vitals streamed straight from a chest strap to the dashboard</div>
+      <div class="content">
+        <div class="hero-row" style="margin-bottom:16px;">
+          <div class="hero-icon rose"><span style="font-size:72px;">♥</span></div>
+          <div style="flex:1;">
+            <ul class="bullets">
+              <li><b>Polar H10 chest strap</b> broadcasts over standard Bluetooth LE <span class="sub">Heart Rate Service <code class="inline">0x180D</code> · Measurement characteristic <code class="inline">0x2A37</code></span></li>
+              <li><b>Phone connects directly</b> via <code class="inline">react-native-ble-plx</code> — scans, pairs, and decodes BPM with no extra Pi hardware needed</li>
+              <li><b>Live UI</b> — an animated heart icon pulses in real time at the patient's actual BPM</li>
+            </ul>
+          </div>
+        </div>
+        <div class="flow">
+          <div class="flow-box"><div class="icon-big">♥</div><b>Reading every ~1s</b><span>Decoded on phone</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box"><div class="icon-big">📤</div><b>Reported every 3s</b><span>POST /heartbeat/report</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box"><div class="icon-big">⚖</div><b>Threshold check</b><span>Configurable per patient</span></div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-box"><div class="icon-big">🔔</div><b>Guardian alert</b><span>Push notification on breach</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>11 / 22</span></div>
+  </section>
+
+  <!-- 12. AUTOMATION IDEA ★ -->
+  <section class="slide">
+    <div class="slide-top" style="background:linear-gradient(90deg,var(--primary),var(--teal));"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">12</span> Core Idea <span class="badge-star">★ Key Innovation</span></div>
+      <h1 class="title">Sensor-Triggered Automation on the Linux OS</h1>
+      <div class="subtitle">The patient's physical action is the trigger — not a screen tap</div>
+      <div class="content">
+        <ul class="bullets">
+          <li><b>No manual startup, ever.</b> A background script (<code class="inline">main_ai.py</code>) is installed as a persistent process on the Pi's Linux OS — the same way the backend itself runs as a <code class="inline">systemd</code> service — so it is alive from the moment the device boots.</li>
+          <li><b>Idle state:</b> while waiting, its only job is to watch the LDR sensor on GPIO 17.</li>
+          <li><b>The trigger:</b> the instant the sensor reports "glasses on," the OS-level script spontaneously launches the entire AI pipeline — camera, face recognition, voice recognition. Taking the glasses off kills it again, just as automatically.</li>
+          <li><b>Same script, second job:</b> a parallel medication-timing thread independently wakes the camera for MediScan exactly when a dose is due — regardless of whether the glasses were just put on.</li>
+          <li><b>Net effect:</b> hardware sensor state drives software process lifecycle directly. The caregiver never opens an app, SSHes in, or flips a switch — the system runs itself.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>12 / 22</span></div>
+  </section>
+
+  <!-- 13. COORDINATOR -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">13</span> Architecture</div>
+      <h1 class="title">Mode-Switching: One Camera, Two Jobs</h1>
+      <div class="subtitle">Face recognition and MediScan can never run at the same time — they share one camera</div>
+      <div class="content">
+        <div class="grid2">
+          <div class="card"><h3>The constraint</h3><p>The Pi has a single camera. Face/voice recognition and medication scanning are two separate processes that both need exclusive access to it.</p></div>
+          <div class="card teal"><h3>The solution</h3><p>A shared <code class="inline">system_state</code> document in MongoDB stores the current <b>mode</b>. The coordinator script polls it, kills the old process, and starts the right one.</p></div>
+        </div>
+        <ul class="bullets" style="margin-top:14px;">
+          <li><b>Safety net 1:</b> if a child process dies unexpectedly, it's auto-restarted on the next poll</li>
+          <li><b>Safety net 2:</b> if MediScan runs longer than 5 minutes without confirming, the mode auto-reverts to face/voice recognition</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>13 / 22</span></div>
+  </section>
+
+  <!-- 14. MOBILE APP -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">14</span> Application</div>
+      <h1 class="title">Mobile App — Screens &amp; Roles</h1>
+      <div class="content">
+        <div class="grid2">
+          <div class="card">
+            <h3>Three account roles</h3>
+            <p><b>Patient</b> — the person being cared for · <b>Guardian</b> — up to 2 per patient · <b>Caregiver</b> — 1 per patient, can belong to an agency</p>
+          </div>
+          <div class="card">
+            <h3>Key screens</h3>
+            <p>Dashboard · Geolocation · Add Friend / Add Voice · Add Medication · Meds List · Heartbeat · Face Recognition · People List · Profile</p>
+          </div>
+        </div>
+        <div style="margin-top:18px;">
+          <span class="pill">Sign Up / Login</span>
+          <span class="pill">Dashboard &amp; Alert Banner</span>
+          <span class="pill">Live Geolocation</span>
+          <span class="pill">Add Friend (Face + Voice)</span>
+          <span class="pill">Medication Manager</span>
+          <span class="pill">Heart Rate Monitor</span>
+          <span class="pill">People Directory</span>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>14 / 22</span></div>
+  </section>
+
+  <!-- 15. ALERTS -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">15</span> Notifications</div>
+      <h1 class="title">Alerts &amp; Push Notifications</h1>
+      <div class="subtitle">Guardians and caregivers are notified the moment something needs attention</div>
+      <div class="content">
+        <div class="grid3">
+          <div class="card rose"><h3><span class="icon">♥</span>High Heart Rate</h3><p>Triggered when BPM exceeds the patient's configured threshold.</p></div>
+          <div class="card amber"><h3><span class="icon">💊</span>Medication Missed</h3><p>Triggered when MediScan times out without confirming the dose.</p></div>
+          <div class="card teal"><h3><span class="icon">✓</span>Medication Confirmed</h3><p>Dashboard banner clears automatically once the camera verifies it.</p></div>
+        </div>
+        <p style="margin-top:18px;color:var(--muted);font-size:14.5px;">Delivered via <b>Firebase Cloud Messaging</b>; the dashboard also polls for pending alerts every 15 seconds as a fallback.</p>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>15 / 22</span></div>
+  </section>
+
+  <!-- 16. DATABASE -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">16</span> Data Layer</div>
+      <h1 class="title">Database Design — MongoDB Atlas</h1>
+      <div class="content">
+        <div class="grid4">
+          <div class="card"><h3>users / guardians / caregivers</h3><p>Account data, linked via <code class="inline">patient_links</code></p></div>
+          <div class="card"><h3>people</h3><p>Known persons + face &amp; voice embeddings</p></div>
+          <div class="card"><h3>medications</h3><p>Name, schedule, dosage, active state</p></div>
+          <div class="card"><h3>heartbeat_*</h3><p>Readings, latest snapshot, triggered alerts</p></div>
+        </div>
+        <p style="margin-top:18px;color:var(--muted);font-size:14.5px;">All operations are <b>asynchronous</b> (Motor/PyMongo async). A patient can link to multiple helper accounts; helpers can each watch multiple patients.</p>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>16 / 22</span></div>
+  </section>
+
+  <!-- 17. REALTIME PATTERN -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">17</span> Communication</div>
+      <h1 class="title">Real-Time Pattern: Polling by Design</h1>
+      <div class="subtitle">No WebSockets — deliberately simple, resilient on a flaky home network</div>
+      <div class="content">
+        <div class="grid4">
+          <div class="stat"><div class="n">5–10s</div><div class="l">Pi → backend mode poll</div></div>
+          <div class="stat"><div class="n">~150ms</div><div class="l">Live recognition frame poll</div></div>
+          <div class="stat"><div class="n">3s</div><div class="l">Heart-rate report interval</div></div>
+          <div class="stat"><div class="n">15s</div><div class="l">Dashboard alert poll</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>17 / 22</span></div>
+  </section>
+
+  <!-- 18. GEOLOCATION -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">18</span> Safety</div>
+      <h1 class="title">Geolocation Tracking</h1>
+      <div class="subtitle">Letting guardians know where the patient's device is</div>
+      <div class="content">
+        <ul class="bullets">
+          <li><b>Manually pinned location</b> — caregivers can set a known/home location for the patient</li>
+          <li><b>IP-based fallback</b> — if no pin is set, the backend resolves an approximate location automatically</li>
+          <li><b>Guardian view</b> — visible on the Geolocation screen of the mobile app</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>18 / 22</span></div>
+  </section>
+
+  <!-- 19. CHALLENGES -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">19</span> Engineering</div>
+      <h1 class="title">Challenges &amp; Solutions</h1>
+      <div class="content">
+        <ul class="bullets">
+          <li><b>Camera contention</b> between recognition and MediScan <span class="sub">Solved with a single shared mode flag + coordinator process</span></li>
+          <li><b>Unreliable home Wi-Fi</b> on the Pi <span class="sub">Medication schedule cached locally so timing keeps working offline</span></li>
+          <li><b>False sensor triggers</b> from light flicker <span class="sub">3-read debounce window on the LDR loop</span></li>
+          <li><b>BLE disconnects</b> mid-monitoring <span class="sub">Automatic reconnect logic with bounded retry/backoff</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>19 / 22</span></div>
+  </section>
+
+  <!-- 20. FUTURE WORK -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">20</span> Roadmap</div>
+      <h1 class="title">Future Work</h1>
+      <div class="content">
+        <div class="grid2">
+          <div class="card"><h3>Fall detection</h3><p>Add an IMU/accelerometer to the glasses to detect falls and auto-alert guardians.</p></div>
+          <div class="card"><h3>Dedicated GPS module</h3><p>Replace IP-based fallback location with real GPS hardware for accurate outdoor tracking.</p></div>
+          <div class="card"><h3>Multi-language TTS</h3><p>Expand Piper voice support beyond English for broader accessibility.</p></div>
+          <div class="card"><h3>On-device encryption</h3><p>Encrypt cached medication data and embeddings at rest on the Pi.</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>20 / 22</span></div>
+  </section>
+
+  <!-- 21. CONCLUSION -->
+  <section class="slide">
+    <div class="slide-top"></div>
+    <div class="slide-body">
+      <div class="kicker"><span class="num">21</span> Wrap-up</div>
+      <h1 class="title">Conclusion</h1>
+      <div class="content">
+        <ul class="bullets">
+          <li>Alzemora combines <b>face/voice recognition</b>, <b>medication verification</b>, and <b>vital-sign monitoring</b> into one wearable system</li>
+          <li>The standout design choice is <b>physical, sensor-driven automation</b>: the LDR sensor and a persistent Linux background script mean the system requires zero manual operation</li>
+          <li>Real-time alerts keep guardians and caregivers informed without needing to constantly check in</li>
+          <li>Built entirely on accessible, low-cost hardware — a Raspberry Pi 5, an LDR, and an off-the-shelf BLE heart-rate strap</li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>21 / 22</span></div>
+  </section>
+
+  <!-- 22. THANK YOU -->
+  <section class="slide end-slide">
+    <div class="slide-top"></div>
+    <div class="slide-body" style="align-items:center;justify-content:center;">
+      <div class="brandmark" style="width:72px;height:72px;border-radius:18px;background:linear-gradient(145deg,var(--primary),var(--teal));display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:28px;margin-bottom:24px;">A</div>
+      <h1 class="title" style="font-size:48px;">Thank You</h1>
+      <div class="subtitle" style="font-size:19px;">Questions &amp; Discussion</div>
+      <p style="color:var(--muted);font-size:15px;">[Your Name(s)] · [Contact Email] · [University / Department]</p>
+    </div>
+    <div class="footer"><span>Alzemora</span><span>22 / 22</span></div>
+  </section>
+
+</div>
+
+<div class="nav">
+  <button id="prevBtn" title="Previous (←)">‹</button>
+  <span class="counter" id="counter">1 / 22</span>
+  <button id="nextBtn" title="Next (→)">›</button>
+  <button id="fsBtn" title="Fullscreen (F)">⛶</button>
+</div>
+
+<script>
+  const slides = document.querySelectorAll('.slide');
+  let idx = 0;
+  function show(i){
+    idx = Math.max(0, Math.min(slides.length - 1, i));
+    slides.forEach((s, n) => s.classList.toggle('active', n === idx));
+    document.getElementById('counter').textContent = (idx+1) + ' / ' + slides.length;
+  }
+  document.getElementById('nextBtn').onclick = () => show(idx+1);
+  document.getElementById('prevBtn').onclick = () => show(idx-1);
+  document.getElementById('fsBtn').onclick = () => {
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  };
+  document.addEventListener('keydown', (e) => {
+    if (['ArrowRight','PageDown',' '].includes(e.key)) { show(idx+1); e.preventDefault(); }
+    if (['ArrowLeft','PageUp'].includes(e.key)) { show(idx-1); e.preventDefault(); }
+    if (e.key.toLowerCase() === 'f') document.getElementById('fsBtn').click();
+  });
+  let touchX = null;
+  document.addEventListener('touchstart', e => touchX = e.touches[0].clientX);
+  document.addEventListener('touchend', e => {
+    if (touchX === null) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    if (dx < -50) show(idx+1);
+    if (dx > 50) show(idx-1);
+    touchX = null;
+  });
+  show(0);
+</script>
+
+</body>
+</html>

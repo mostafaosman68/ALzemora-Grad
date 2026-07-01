@@ -341,17 +341,15 @@ export default function MedsListScreen({navigation}) {
                     ) : null}
                   </View>
 
-                  <View style={styles.actionsCol}>
-                    {/* Edit button — visible to everyone */}
-                    <TouchableOpacity
-                      style={styles.editBtn}
-                      onPress={() => handleEditPress(med)}
-                      activeOpacity={0.75}>
-                      <Text style={styles.editBtnIcon}>✏️</Text>
-                    </TouchableOpacity>
+                  {isHelper && (
+                    <View style={styles.actionsCol}>
+                      <TouchableOpacity
+                        style={styles.editBtn}
+                        onPress={() => handleEditPress(med)}
+                        activeOpacity={0.75}>
+                        <Text style={styles.editBtnIcon}>✏️</Text>
+                      </TouchableOpacity>
 
-                    {/* Delete button — only for guardian / caregiver */}
-                    {isHelper && (
                       <TouchableOpacity
                         style={[styles.deleteBtn, isDeleting && styles.deleteBtnDisabled]}
                         onPress={() => !isDeleting && handleDelete(med)}
@@ -363,8 +361,8 @@ export default function MedsListScreen({navigation}) {
                           <Text style={styles.deleteBtnIcon}>🗑</Text>
                         )}
                       </TouchableOpacity>
-                    )}
-                  </View>
+                    </View>
+                  )}
                 </View>
               );
             })

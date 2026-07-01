@@ -2,7 +2,11 @@ from fastapi import APIRouter, HTTPException, Request
 from bson import ObjectId
 
 from app.database import get_db
-from app.services.heartbeat_bridge_service import set_active_heartbeat_patient
+from app.services.heartbeat_bridge_service import (
+    set_active_heartbeat_patient,
+    get_active_heartbeat_patient,
+    HEART_RATE_SERVICE_UUID,
+)
 from app.services.heartbeat_service import (
     evaluate_heartbeat,
     get_latest_heartbeat_state,
@@ -195,3 +199,52 @@ async def set_active_bridge_patient(request: Request):
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to set active bridge patient: {str(exc)}") from exc
+
+
+@router.get("/bridge/status")
+async def bridge_status():
+    """Return which patient the BLE bridge is currently running for."""
+    patient_id = get_active_heartbeat_patient()
+    return {
+        "bridge_running": patient_id is not None,
+        "active_patient_id": patient_id,
+    }
+
+
+@router.get("/scan")
+async def scan_ble_devices(timeout: float = 8.0):
+    """Scan for nearby BLE devices and flag any that advertise the Heart Rate service.
+
+    Useful for diagnosing whether the Pi can see the heart-rate sensor.
+    """
+    try:
+        import asyncio
+        from bleak import BleakScanner
+        from bleak.backends.device import BLEDevice
+        from bleak.backends.scanner import AdvertisementData
+
+        HR_SHORT = "180d"
+        devices_seen: dict[str, dict] = {}
+
+        def _callback(device: BLEDevice, adv: AdvertisementData) -> None:
+            uuids = [u.lower() for u in (adv.service_uuids or [])]
+            devices_seen[device.address] = {
+                "address": device.address,
+                "name": (device.name or "").strip() or None,
+                "rssi": adv.rssi,
+                "has_heart_rate_service": any(HR_SHORT in u for u in uuids),
+                "service_uuids": uuids,
+            }
+
+        async with BleakScanner(_callback):
+            await asyncio.sleep(min(timeout, 15.0))
+
+        results = sorted(devices_seen.values(), key=lambda d: -(d["rssi"] or -999))
+        return {
+            "scanned_for_seconds": timeout,
+            "devices_found": len(results),
+            "devices": results,
+        }
+
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"BLE scan failed: {type(exc).__name__}: {exc}") from exc

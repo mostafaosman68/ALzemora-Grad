@@ -8,7 +8,7 @@ from bson import ObjectId
 
 
 DEFAULT_HEART_RATE_THRESHOLD = 90
-DEFAULT_SENSOR_STALE_SECONDS = 10
+DEFAULT_SENSOR_STALE_SECONDS = 20
 
 
 def normalize_patient_links(helper_account: dict[str, Any]) -> list[dict[str, str]]:
@@ -258,7 +258,11 @@ async def get_latest_heartbeat_state(db, patient_id: str, stale_after_seconds: i
         seconds_ago = max(int((datetime.utcnow() - recorded_at).total_seconds()), 0)
         sensor_connected = seconds_ago <= stale_after_seconds
 
-    status = latest.get("status") or ("live" if sensor_connected else "stale")
+    # Compute status fresh — never use the stale value stored in the DB document.
+    if sensor_connected:
+        status = "alert_triggered" if bool(latest.get("alert_triggered")) else "live"
+    else:
+        status = "stale"
 
     return {
         "patient_id": patient_id,

@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.database import connect_to_mongo, close_mongo_connection
 from app.routes import users, people, recognition, heartbeat, ml_process, medications, alerts, medscan
 from app.routes import ml_mode
-from app.services.heartbeat_bridge_service import run_heartbeat_bridge
+from app.routes import gps
 from app.services.firebase_service import initialize_firebase
 from app.services.medication_scheduler import run_medication_scheduler
 
@@ -37,7 +37,7 @@ async def startup_event():
     # Start medication scheduler background task
     asyncio.create_task(run_medication_scheduler())
     logger.info("[STARTUP] Medication scheduler started")
-    logger.info("[STARTUP] Heartbeat bridge waiting for the logged-in patient to activate it...")
+    logger.info("[STARTUP] BLE is handled by the phone — Pi bridge idle")
 
 
 @app.on_event("shutdown")
@@ -55,6 +55,7 @@ app.include_router(ml_mode.router)
 app.include_router(medications.router)
 app.include_router(medscan.router)
 app.include_router(alerts.router)
+app.include_router(gps.router)
 
 
 @app.get("/")

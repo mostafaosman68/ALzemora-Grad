@@ -271,7 +271,7 @@ def main() -> None:
     target_med_id:   Optional[str] = args.medication_id
     target_med_name: Optional[str] = args.medication_name
     patient_id:      Optional[str] = args.patient_id
-    targeted_mode = target_med_id is not None
+    targeted_mode = target_med_id is not None or target_med_name is not None
 
     if targeted_mode:
         logger.info("TARGETED mode — %s (%s)", target_med_name, target_med_id)
@@ -434,8 +434,8 @@ def main() -> None:
                     state.misses      = 0
                     state.stable_bbox = None
 
-        # ── Speech ────────────────────────────────────────────────────────
-        if speech_enabled:
+        # ── Speech (full mode only — targeted mode speech handled by med_timing) ─
+        if speech_enabled and not targeted_mode:
             pending: list[str] = []
             for key, state in states.items():
                 if state.confirmed and (now - state.last_spoke_time) >= SPEECH_REPEAT_S:

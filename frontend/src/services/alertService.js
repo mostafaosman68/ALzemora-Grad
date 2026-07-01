@@ -83,9 +83,11 @@ export async function clearAllAlerts(patientId) {
   return parseJsonResponse(response);
 }
 
+const MED_ALERT_TYPES = new Set(['medication_due', 'medication_missed']);
+
 /**
- * Fetch unread alerts and return only medication_due ones.
- * Returns an array of alert objects (may be empty).
+ * Fetch unread alerts and return medication_due and medication_missed ones.
+ * Returns an array of alert objects sorted newest-first (may be empty).
  */
 export async function getMedAlerts(patientId) {
   if (!patientId) {
@@ -94,7 +96,7 @@ export async function getMedAlerts(patientId) {
   try {
     const data = await getUnreadAlerts(patientId);
     const all = Array.isArray(data?.alerts) ? data.alerts : [];
-    return all.filter(a => a.alert_type === 'medication_due');
+    return all.filter(a => MED_ALERT_TYPES.has(a.alert_type));
   } catch {
     return [];
   }

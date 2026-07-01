@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useState} from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,6 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import {launchCamera, launchImageLibrary} from 'react-native-image-picker';
-import AudioRecord from '../services/audioRecorder';
 import {
   ScreenBg,
   TopBar,
@@ -27,8 +26,6 @@ import {BASE_URL} from '../config';
 
 const API_URL = BASE_URL;
 const MIN_PHOTOS = 1;
-const REQUIRED_VOICE_SAMPLES = 3;
-const VOICE_SAMPLE_SECONDS = 5;
 
 /* ─── Permission helpers ─────────────────────────────────── */
 async function requestCameraPermission() {
@@ -62,24 +59,6 @@ async function requestStoragePermission() {
       buttonPositive: 'Allow',
       buttonNegative: 'Deny',
     });
-    return granted === PermissionsAndroid.RESULTS.GRANTED;
-  } catch {
-    return false;
-  }
-}
-
-async function requestMicPermission() {
-  if (Platform.OS !== 'android') return true;
-  try {
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-      {
-        title: 'Microphone Permission',
-        message: 'Alzemora needs microphone access to record voice samples.',
-        buttonPositive: 'Allow',
-        buttonNegative: 'Deny',
-      },
-    );
     return granted === PermissionsAndroid.RESULTS.GRANTED;
   } catch {
     return false;
@@ -180,21 +159,8 @@ export default function AddFriendScreen({navigation}) {
   const [name, setName] = useState('');
   const [relationship, setRelationship] = useState('');
   const [photos, setPhotos] = useState([]);
-  const [voiceEnabled, setVoiceEnabled] = useState(false);
-  const [voiceSamples, setVoiceSamples] = useState([]);
-  const [isRecording, setIsRecording] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState('');
-
-  const stopTimeoutRef = useRef(null);
-
-  useEffect(() => {
-    return () => {
-      if (stopTimeoutRef.current) {
-        clearTimeout(stopTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const isValid = name.trim().length > 0;
 
@@ -203,105 +169,13 @@ export default function AddFriendScreen({navigation}) {
       ? user?.patient_id
       : user?.user_id;
 
-  const normalizeFileUri = filePath =>
-    filePath?.startsWith('file://') ? filePath : `file://${filePath}`;
-
-  const safeVoiceFolderName = input =>
-    input
-      .trim()
-      .replace(/[<>:"/\\|?*]+/g, '_')
-      .replace(/\s+/g, ' ');
-
-  const stopVoiceRecording = async () => {
-    const rawPath = await AudioRecord.stop();
-    setIsRecording(false);
-    if (stopTimeoutRef.current) {
-      clearTimeout(stopTimeoutRef.current);
-      stopTimeoutRef.current = null;
-    }
-    return rawPath;
-  };
-
-  const handleRecordSample = async () => {
-    if (!voiceEnabled || isRecording) return;
-
-    if (!name.trim()) {
-      Alert.alert('Name Required', 'Enter friend name before recording voice samples.');
-      return;
-    }
-    if (voiceSamples.length >= REQUIRED_VOICE_SAMPLES) {
-      Alert.alert('Completed', 'You already recorded all 3 voice samples.');
-      return;
-    }
-
-    const micAllowed = await requestMicPermission();
-    if (!micAllowed) {
-      Alert.alert('Permission Denied', 'Enable microphone permission in phone Settings.');
-      return;
-    }
-
-    try {
-      AudioRecord.init({
-        sampleRate: 16000,
-        channels: 1,
-        bitsPerSample: 16,
-        wavFile: `voice_sample_${voiceSamples.length + 1}.wav`,
-      });
-
-      AudioRecord.start();
-      setIsRecording(true);
-
-      stopTimeoutRef.current = setTimeout(async () => {
-        try {
-          const rawPath = await stopVoiceRecording();
-          if (!rawPath) {
-            Alert.alert('Recording Error', 'No audio file was captured. Please try again.');
-            return;
-          }
-
-          const sampleNumber = voiceSamples.length + 1;
-          setVoiceSamples(prev => [
-            ...prev,
-            {
-              uri: normalizeFileUri(rawPath),
-              name: `${safeVoiceFolderName(name)}_sample_${sampleNumber}.wav`,
-            },
-          ]);
-
-          Alert.alert('Recorded', `Voice sample ${sampleNumber}/${REQUIRED_VOICE_SAMPLES} saved.`);
-        } catch {
-          setIsRecording(false);
-          Alert.alert('Recording Error', 'Could not save voice sample. Please try again.');
-        }
-      }, VOICE_SAMPLE_SECONDS * 1000);
-    } catch {
-      setIsRecording(false);
-      Alert.alert('Recording Error', 'Could not start microphone recording.');
-    }
-  };
-
-  const handleResetVoiceSamples = () => {
-    if (isRecording) {
-      Alert.alert('Please Wait', 'Recording is in progress.');
-      return;
-    }
-    setVoiceSamples([]);
-  };
-
   const handleAdd = async () => {
     if (!name.trim()) {
-      Alert.alert('Missing Info', 'Please enter the person\'s name.');
+      Alert.alert('Missing Info', "Please enter the person's name.");
       return;
     }
     if (photos.length < MIN_PHOTOS) {
       Alert.alert('Photo Required', `Please add at least ${MIN_PHOTOS} photo.`);
-      return;
-    }
-    if (voiceEnabled && voiceSamples.length < REQUIRED_VOICE_SAMPLES) {
-      Alert.alert(
-        'Voice Samples Required',
-        `Please record ${REQUIRED_VOICE_SAMPLES} samples (${VOICE_SAMPLE_SECONDS} seconds each).`,
-      );
       return;
     }
     if (!targetUserId) {
@@ -328,17 +202,6 @@ export default function AddFriendScreen({navigation}) {
         name: filename,
         type: mimeType,
       });
-
-      if (voiceEnabled && voiceSamples.length === REQUIRED_VOICE_SAMPLES) {
-        setStatusText('Uploading voice samples...');
-        voiceSamples.forEach(sample => {
-          formData.append('voice_files', {
-            uri: sample.uri,
-            name: sample.name,
-            type: 'audio/wav',
-          });
-        });
-      }
 
       const response = await fetch(`${API_URL}/register-person`, {
         method: 'POST',
@@ -408,63 +271,6 @@ export default function AddFriendScreen({navigation}) {
           {photos.length < MIN_PHOTOS && (
             <Text style={styles.photoHint}>{MIN_PHOTOS - photos.length} more photo required</Text>
           )}
-
-          <View style={styles.voiceSection}>
-            <View style={styles.voiceHeader}>
-              <Text style={styles.sectionTitle}>Add voice (optional)</Text>
-              <TouchableOpacity
-                style={[styles.toggleBtn, voiceEnabled && styles.toggleBtnActive]}
-                onPress={() => {
-                  const enabled = !voiceEnabled;
-                  setVoiceEnabled(enabled);
-                  if (!enabled) {
-                    setVoiceSamples([]);
-                  }
-                }}
-                disabled={isRecording}
-                activeOpacity={0.8}>
-                <Text style={[styles.toggleBtnText, voiceEnabled && styles.toggleBtnTextActive]}>
-                  {voiceEnabled ? 'Enabled' : 'Enable'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {voiceEnabled && (
-              <>
-                <Text style={styles.voiceHint}>
-                  Record 3 samples, each exactly 5 seconds. Files are uploaded as WAV.
-                </Text>
-
-                <Text style={styles.voiceProgress}>
-                  {voiceSamples.length}/{REQUIRED_VOICE_SAMPLES} samples recorded
-                </Text>
-
-                <View style={styles.voiceActions}>
-                  <TouchableOpacity
-                    style={[styles.voiceBtn, isRecording && styles.voiceBtnDisabled]}
-                    onPress={handleRecordSample}
-                    disabled={isRecording || voiceSamples.length >= REQUIRED_VOICE_SAMPLES}
-                    activeOpacity={0.8}>
-                    <Text style={styles.voiceBtnText}>
-                      {isRecording
-                        ? `Recording... (${VOICE_SAMPLE_SECONDS}s)`
-                        : voiceSamples.length >= REQUIRED_VOICE_SAMPLES
-                          ? 'All samples recorded'
-                          : `Record sample ${voiceSamples.length + 1}`}
-                    </Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.resetBtn}
-                    onPress={handleResetVoiceSamples}
-                    disabled={isRecording}
-                    activeOpacity={0.8}>
-                    <Text style={styles.resetBtnText}>Reset voice</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
 
           {loading ? (
             <View style={styles.loadingContainer}>
@@ -536,83 +342,6 @@ const styles = StyleSheet.create({
     color: 'rgba(255,200,100,0.8)',
     marginBottom: 6,
     marginLeft: 4,
-  },
-  voiceSection: {
-    marginTop: 14,
-    marginBottom: 8,
-    padding: 12,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    gap: 8,
-  },
-  voiceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  toggleBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.14)',
-  },
-  toggleBtnActive: {
-    backgroundColor: COLORS.teal,
-  },
-  toggleBtnText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  toggleBtnTextActive: {
-    color: COLORS.white,
-  },
-  voiceHint: {
-    color: 'rgba(255,255,255,0.75)',
-    fontSize: 12,
-    fontWeight: '300',
-    lineHeight: 18,
-  },
-  voiceProgress: {
-    color: COLORS.white,
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  voiceActions: {
-    flexDirection: 'row',
-    gap: 8,
-    marginTop: 4,
-  },
-  voiceBtn: {
-    flex: 1,
-    backgroundColor: '#1f8f7a',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-  },
-  voiceBtnDisabled: {
-    opacity: 0.6,
-  },
-  voiceBtnText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  resetBtn: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  resetBtnText: {
-    color: COLORS.white,
-    fontSize: 12,
-    fontWeight: '500',
   },
   loadingContainer: {
     marginTop: 18,

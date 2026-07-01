@@ -7,7 +7,6 @@ import {
   Dimensions,
   Platform,
   Alert,
-  ActivityIndicator,
 } from 'react-native';
 import {useFocusEffect} from '@react-navigation/native';
 import {ScreenBg, TopBar, COLORS} from '../components/UI';
@@ -21,12 +20,12 @@ const {width} = Dimensions.get('window');
 const MENU_ITEMS = [
   {label: 'Profile',          icon: '🧑', screen: 'UserProfile'},
   {label: 'Add Friends',      icon: '👥', screen: 'AddFriend'},
+  {label: 'Add Voice',        icon: '🎙', screen: 'AddVoice'},
   {label: 'My Contacts',     icon: '🧑‍🤝‍🧑', screen: 'PeopleList'},
   {label: 'Add Meds',         icon: '💊', screen: 'AddMed'},
   {label: 'My Meds',          icon: '📋', screen: 'MedsList'},
   {label: 'HB',               icon: '💓', screen: 'HB'},
-  {label: 'GEO-Location',     icon: '📍', screen: 'GeoLocation'},
-  {label: 'Face Recognition', icon: '👁️', action: 'startRecognition'},
+  {label: 'GEO-Location',     icon: '📍', screen: 'GeoLocation', helperOnly: true},
 ];
 
 const getAccountLabel = (role) => {
@@ -72,7 +71,6 @@ const isScheduledToday = (med) => {
 
 export default function DashboardScreen({navigation}) {
   const {user, setUser} = useAuth();
-  const [loading, setLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [medications, setMedications] = useState([]);
   const [medsLoading, setMedsLoading] = useState(false);
@@ -330,43 +328,9 @@ export default function DashboardScreen({navigation}) {
     }
   };
 
-  const startRecognition = async () => {
-    if (!targetUserId) {
-      Alert.alert('Error', 'Could not determine user account. Please log in again.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const response = await fetch(`${BASE_URL}/start-recognition`, {
-        method: 'POST',
-        headers: {'Accept': 'application/json', 'Content-Type': 'application/json'},
-        body: JSON.stringify({user_id: targetUserId}),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        Alert.alert('Failed', data.detail || 'Could not start recognition');
-        return;
-      }
-      if (data.status === 'no_people') {
-        Alert.alert('No People Registered', data.message, [
-          {text: 'Add Friends', onPress: () => navigation.navigate('AddFriend')},
-          {text: 'Cancel', style: 'cancel'},
-        ]);
-        return;
-      }
-      Alert.alert('Recognition Started', 'The Pi camera is now open and recognizing faces.');
-    } catch (err) {
-      Alert.alert('Connection Error', 'Cannot reach the backend. Make sure you are on the same Wi-Fi.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleMenuPress = (item) => {
     setSidebarOpen(false);
-    if (item.action === 'startRecognition') {
-      startRecognition();
-    } else if (item.screen) {
+    if (item.screen) {
       navigation.navigate(item.screen);
     }
   };
@@ -408,16 +372,27 @@ export default function DashboardScreen({navigation}) {
 
       {/* Medication alert banner */}
       {medAlert ? (
-        <View style={styles.medAlertBanner}>
+        <View style={[
+          styles.medAlertBanner,
+          medAlert.alert_type === 'medication_missed' && styles.medAlertBannerMissed,
+        ]}>
           <View style={styles.medAlertLeft}>
-            <Text style={styles.medAlertIcon}>💊</Text>
+            <Text style={styles.medAlertIcon}>
+              {medAlert.alert_type === 'medication_missed' ? '⚠️' : '💊'}
+            </Text>
             <View style={styles.medAlertTextGroup}>
-              <Text style={styles.medAlertTitle}>Medication Reminder</Text>
+              <Text style={styles.medAlertTitle}>
+                {medAlert.alert_type === 'medication_missed'
+                  ? 'Medication Not Detected'
+                  : 'Medication Reminder'}
+              </Text>
               <Text style={styles.medAlertName} numberOfLines={1}>
                 {medAlert.medication_name || 'Medication'}
               </Text>
               <Text style={styles.medAlertSub}>
-                Camera scanning for medication...
+                {medAlert.alert_type === 'medication_missed'
+                  ? 'Camera timed out — please check on the patient'
+                  : 'Camera scanning for medication...'}
               </Text>
             </View>
           </View>
@@ -505,20 +480,14 @@ export default function DashboardScreen({navigation}) {
               </TouchableOpacity>
             </View>
 
-            {MENU_ITEMS.map((item, index) => (
+            {MENU_ITEMS.filter(item => !item.helperOnly || isHelper).map((item, index) => (
               <TouchableOpacity
-                key={item.screen || item.action || index}
+                key={item.screen || index}
                 style={styles.sidebarItem}
                 onPress={() => handleMenuPress(item)}
-                activeOpacity={0.82}
-                disabled={loading && item.action === 'startRecognition'}>
+                activeOpacity={0.82}>
                 <Text style={styles.sidebarItemIcon}>{item.icon}</Text>
-                <Text style={styles.sidebarItemLabel}>
-                  {loading && item.action === 'startRecognition' ? 'Starting...' : item.label}
-                </Text>
-                {loading && item.action === 'startRecognition' && (
-                  <ActivityIndicator size="small" color={COLORS.white} />
-                )}
+                <Text style={styles.sidebarItemLabel}>{item.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -562,6 +531,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  medAlertBannerMissed: {
+    backgroundColor: 'rgba(220, 50, 50, 0.18)',
+    borderColor: 'rgba(220, 80, 80, 0.55)',
   },
   medAlertLeft: {
     flexDirection: 'row',
